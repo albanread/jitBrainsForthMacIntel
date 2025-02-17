@@ -10,7 +10,6 @@
 #include <stack>
 #include "StackManager.h"
 #include <variant>
-#include "StringInterner.h"
 #include "quit.h"
 #include <cmath>
 #include "jitLabels.h"
@@ -242,127 +241,6 @@ public:
         a.mov(reg, asmjit::x86::qword_ptr(asmjit::x86::r14));
         a.add(asmjit::x86::r14, 8);
     }
-
-    static void pushSS(asmjit::x86::Gp reg) {
-        if (!jc.assembler) {
-            throw std::runtime_error("gen_prologue: Assembler not initialized");
-        }
-
-        auto &a = *jc.assembler;
-        a.comment(" ; ----- pushSS");
-        a.comment(" ; save value to the string stack (r12)");
-        a.sub(asmjit::x86::r12, 8);
-        a.mov(asmjit::x86::qword_ptr(asmjit::x86::r12), reg);
-    }
-
-
-    static void prim_inc_ss() {
-        sm.incSS();
-    }
-
-    static void pushSSAndBumpRef(asmjit::x86::Gp reg) {
-        if (!jc.assembler) {
-            throw std::runtime_error("gen_prologue: Assembler not initialized");
-        }
-
-        auto &a = *jc.assembler;
-
-        a.comment("; pushSSAndBumpRef (arg provided)");
-        a.comment("; Decrement string reference");
-
-        a.sub(asmjit::x86::rsp, 8);
-        a.call(prim_dec_ss);
-        a.add(asmjit::x86::rsp, 8);
-
-        a.comment(" ; ----- pushSS");
-        a.comment(" ; save value to the string stack (r12)");
-        a.sub(asmjit::x86::r12, 8);
-        a.mov(asmjit::x86::qword_ptr(asmjit::x86::r12), reg);
-    }
-
-
-    static void prim_dec_ss() {
-        sm.decSS();
-    }
-
-    static void popSS(asmjit::x86::Gp reg) {
-        if (!jc.assembler) {
-            throw std::runtime_error("gen_prologue: Assembler not initialized");
-        }
-
-        auto &a = *jc.assembler;
-        a.comment(" ; ----- popSS");
-        a.comment(" ; fetch value from the string stack (r12)");
-        //a.comment(" ; update string reference count");
-        // a.sub(asmjit::x86::rsp, 8);
-        // a.call(prim_dec_ss);
-        //  a.add(asmjit::x86::rsp, 8);
-        // a.nop();
-        a.mov(reg, asmjit::x86::qword_ptr(asmjit::x86::r12));
-        a.add(asmjit::x86::r12, 8);
-    }
-
-
-    static void loadSS(void *dataAddress) {
-        if (!jc.assembler) {
-            throw std::runtime_error("gen_prologue: Assembler not initialized");
-        }
-
-        auto &a = *jc.assembler;
-        // Load the address into rax
-        a.mov(asmjit::x86::rax, dataAddress);
-
-        // Dereference the address to get the value and store it into rax
-        a.mov(asmjit::x86::rax, asmjit::x86::ptr(asmjit::x86::rax));
-
-        // Push the value onto the string stack
-        pushSS(asmjit::x86::rax);
-    }
-
-
-    static void loadFromSS() {
-        if (!jc.assembler) {
-            throw std::runtime_error("gen_prologue: Assembler not initialized");
-        }
-
-        auto &a = *jc.assembler;
-        // Load the address into rax
-        popSS(asmjit::x86::rax);
-        // Dereference the address to get the value and store it into rax
-        a.mov(asmjit::x86::rax, asmjit::x86::ptr(asmjit::x86::rax));
-        // Push the value onto the string stack
-        pushSS(asmjit::x86::rax);
-    }
-
-    static void storeSS(void *dataAddress) {
-        if (!jc.assembler) {
-            throw std::runtime_error("gen_prologue: Assembler not initialized");
-        }
-
-        auto &a = *jc.assembler;
-        // Pop the value from the string stack into rax
-        popSS(asmjit::x86::rax);
-
-        // Load the address into rcx
-        a.mov(asmjit::x86::rcx, dataAddress);
-        // Store the value from rax into the address pointed to by rcx
-        a.mov(asmjit::x86::qword_ptr(asmjit::x86::rcx), asmjit::x86::rax);
-    }
-
-
-    static void storeFromSS() {
-        if (!jc.assembler) {
-            throw std::runtime_error("gen_prologue: Assembler not initialized");
-        }
-
-        auto &a = *jc.assembler;
-        // Pop the value from the string stack into rax
-        popSS(asmjit::x86::rcx); // address
-        popSS(asmjit::x86::rax); // data
-        // Store the value from rax into the address pointed to by rcx
-        a.mov(asmjit::x86::qword_ptr(asmjit::x86::rcx), asmjit::x86::rax);
-    }
-
 
     // Function to find local by name
     static int findLocal(const std::string &word) {
@@ -704,18 +582,7 @@ public:
             {
                 // Get the address of the variable's data
                 auto *variable_address = reinterpret_cast<int64_t *>(d.get_data_ptr());
-                if (logging) printf("string address: %p\n", variable_address);
-                if (!variable_address) {
-                    throw std::runtime_error("Failed to get string address for word: " + w);
-                }
 
-                a.mov(asmjit::x86::rax, variable_address);
-
-                // Pop the value from the data stack into rcx
-                popSS(asmjit::x86::rcx);
-
-                // Store the value into the address
-                a.mov(asmjit::x86::qword_ptr(asmjit::x86::rax), asmjit::x86::rcx);
             }
             jc.pos_last_word = pos;
         } else {
@@ -778,11 +645,7 @@ public:
                 *reinterpret_cast<int64_t *>(variable_address) = value;
             } else if (word_type == ForthWordType::STRING) // variable
             {
-                // update a string variable from the string stack.
-                auto variable_address = d.get_data_ptr();
-                size_t string_address = sm.popSS();
-                strIntern.incrementRef(string_address);
-                fword->data = string_address; // update the data pointer to point to the string
+
             }
             jc.pos_last_word = pos;
         } else {
@@ -1045,6 +908,7 @@ public:
     // immediate value, runs when value is called.
     // s" literal string" VALUE fred
     static void genImmediateStringValue() {
+
         const auto &words = *jc.words;
         size_t pos = jc.pos_next_word + 1;
 
@@ -1052,28 +916,6 @@ public:
         jc.word = word;
 
 
-        // Pop the initial value from the data stack
-        auto initialValue = sm.popSS();
-        strIntern.incrementRef(initialValue);
-        printf("initialValue: %llu\n", initialValue);
-        jc.resetContext();
-        if (!jc.assembler) {
-            throw std::runtime_error("entryFunction: Assembler not initialized");
-        }
-        auto &a = *jc.assembler;
-        commentWithWord(" ; ----- immediate value: ", word);
-        // Add the word to the dictionary as a value
-        d.addWord(word.c_str(), nullptr, nullptr, nullptr, nullptr);
-        d.setData(initialValue); // Set the value
-        auto dataAddress = d.get_data_ptr();
-        d.setType(ForthWordType::STRING); // value type
-
-        a.comment(" ; ----- fetch value");
-        loadSS(dataAddress);
-        a.ret();
-
-        ForthFunction compiledFunc = endGeneration();
-        d.setCompiledFunction(compiledFunc);
         // Update position
         jc.pos_last_word = pos;
     }
@@ -1112,184 +954,6 @@ public:
     }
 
 
-    static void prim_string_cat() {
-        const size_t s1 = sm.popSS();
-        const size_t s2 = sm.popSS();
-        const size_t s3 = strIntern.StringCat(s2, s1);
-        strIntern.incrementRef(s3);
-        sm.pushSS(s3);
-    }
-
-    // s+
-    static void genStringCat() {
-        if (!jc.assembler) {
-            throw std::runtime_error("entryFunction: Assembler not initialized");
-        }
-        auto &a = *jc.assembler;
-        commentWithWord(" ; ----- .s+ calls strcat ");
-        a.sub(asmjit::x86::rsp, 8);
-        a.call(prim_string_cat);
-        a.add(asmjit::x86::rsp, 8);
-    }
-
-    static void prim_str_pos() {
-        const size_t s1 = sm.popSS();
-        const size_t s2 = sm.popSS();
-        const int pos = strIntern.StrPos(s1, s2);
-        sm.pushDS(static_cast<size_t>(pos));
-    }
-
-    static void genStrPos() {
-        if (!jc.assembler) {
-            throw std::runtime_error("entryFunction: Assembler not initialized");
-        }
-        auto &a = *jc.assembler;
-        commentWithWord(" ; ----- .pos calls strpos ");
-        a.sub(asmjit::x86::rsp, 8);
-        a.call(prim_str_pos);
-        a.add(asmjit::x86::rsp, 8);
-    }
-
-    static void prim_string_field() {
-        const size_t s1 = sm.popSS();
-        const size_t delimiter = sm.popSS();
-        const size_t position = sm.popDS();
-        const size_t result = strIntern.StringSplit(delimiter, s1, position);
-        strIntern.incrementRef(result);
-        sm.pushSS(result);
-    }
-
-    // extract a field.
-    static void genStringField() {
-        if (!jc.assembler) {
-            throw std::runtime_error("entryFunction: Assembler not initialized");
-        }
-        auto &a = *jc.assembler;
-        commentWithWord(" ; ----- .split calls string split ");
-        a.sub(asmjit::x86::rsp, 8);
-        a.call(prim_string_field);
-        a.add(asmjit::x86::rsp, 8);
-    }
-
-    static void prim_count_fields() {
-        const size_t s1 = sm.popSS();
-        const size_t s2 = sm.popSS();
-        const size_t count = strIntern.CountFields(s2, s1);
-        sm.pushDS(count);
-    }
-
-    static void genCountFields() {
-        if (!jc.assembler) {
-            throw std::runtime_error("entryFunction: Assembler not initialized");
-        }
-        auto &a = *jc.assembler;
-        commentWithWord(" ; ----- .count calls count fields ");
-        a.sub(asmjit::x86::rsp, 8);
-        a.call(prim_count_fields);
-        a.add(asmjit::x86::rsp, 8);
-    }
-
-
-    static size_t stripIndex(const std::string &token) {
-        std::string prefix = "sPtr_";
-        if (token.compare(0, prefix.size(), prefix) == 0) {
-            // Extract the numeric part after the prefix
-            std::string numberStr = token.substr(prefix.size());
-            std::uintptr_t address = 0;
-
-            // Convert the numeric string to an unsigned integer
-            std::istringstream iss(numberStr);
-            iss >> address;
-
-            // Return the address as a pointer to const char
-            return address;
-        }
-
-        // Return nullptr if the prefix does not match
-        return -1;
-    }
-
-    // supports ."
-    static void genImmediateDotQuote() {
-        const auto &words = *jc.words;
-        size_t pos = jc.pos_next_word + 1;
-        std::string word = words[pos];
-        jc.word = word;
-        if (logging) printf("genImmediateDotQuote: %s\n", word.c_str());
-        const auto index = stripIndex(word);
-        strIntern.incrementRef(index);
-        auto address = strIntern.getStringAddress(index);
-
-        if (!jc.assembler) {
-            throw std::runtime_error("entryFunction: Assembler not initialized");
-        }
-
-        auto &a = *jc.assembler;
-        commentWithWord(" ; ----- .\" displaying text ");
-
-        // put parameter in argument
-
-        a.push(asmjit::x86::rdi);
-        a.mov(asmjit::x86::rdi, address);
-        a.call(asmjit::imm(reinterpret_cast<uint64_t>(prints))); // Call the function in rax
-        a.pop(asmjit::x86::rdi); // Restore RDI after the call
-
-        jc.pos_last_word = pos;
-    }
-
-    // support s" for compiler code generation
-    static void genImmediateSQuote() {
-        const auto &words = *jc.words;
-        size_t pos = jc.pos_next_word + 1;
-        std::string word = words[pos];
-        jc.word = word;
-
-        auto address = stripIndex(word);
-
-        if (!jc.assembler) {
-            throw std::runtime_error("entryFunction: Assembler not initialized");
-        }
-
-        auto &a = *jc.assembler;
-        commentWithWord(" ; ----- s\" stacking text ");
-        a.mov(asmjit::x86::rcx, address);
-        pushSS(asmjit::x86::rcx);
-
-        jc.pos_last_word = pos;
-    }
-
-    // supports sprint
-    // takes index from string stack turns to address and prints at run time.
-    static void genPrint() {
-        if (!jc.assembler) {
-            throw std::runtime_error("entryFunction: Assembler not initialized");
-        }
-        auto &a = *jc.assembler;
-        commentWithWord(" ; ----- sprint prints string ");
-
-        a.push(asmjit::x86::rdi);
-        popDS(asmjit::x86::rdi);
-        a.call(asmjit::imm(reinterpret_cast<uint64_t>(prim_sindex))); // Call the function in rax
-        a.pop(asmjit::x86::rdi); // Restore RDI after the call
-
-        a.push(asmjit::x86::rdi);
-        popDS(asmjit::x86::rdi);
-        a.call(asmjit::imm(reinterpret_cast<uint64_t>(prints))); // Call the function in rax
-        a.pop(asmjit::x86::rdi); // Restore RDI after the call
-    }
-
-
-    // support s" for interpreter immediate execution.
-    static void genTerpImmediateSQuote() {
-        const auto &words = *jc.words;
-        size_t pos = jc.pos_next_word + 1;
-        std::string word = words[pos];
-        jc.word = word;
-
-        auto address = stripIndex(word);
-        sm.pushSS(static_cast<uint64_t>(address));
-        jc.pos_last_word = pos;
-    }
 
 
     //
@@ -1454,12 +1118,6 @@ public:
 
     static void prim_forget() {
         d.forgetLastWord();
-    }
-
-    static void *prim_sindex(size_t index) {
-        auto address = strIntern.getStringAddress(index);
-        // printf("address: %p\n", address);
-        return address;
     }
 
 

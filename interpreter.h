@@ -7,7 +7,6 @@
 #include <regex>
 #include <sstream>
 #include "utility.h"
-#include "StringInterner.h"
 #include "JitContext.h"
 #include "JitGenerator.h"
 #include "tests.h"
@@ -17,11 +16,13 @@
 #include <cstdlib>
 #include <cstdio>
 #include <cstdint>
+#include <cstring>
+
 
 #define MAX_INPUT 1024
 #define MAX_WORD_LENGTH 16
 
-inline bool debug_enabled = true;  // Debug flag (default: off)
+inline bool debug_enabled = false;  // Debug flag (default: off)
 
 // Function to enable or disable debug mode
 inline void set_debug_mode(bool enable) {
@@ -51,58 +52,96 @@ void disable_raw_mode(struct termios *orig_termios) {
 }
 
 
-// Read a line with arrow keys and backspace handling
+
+
+#define MAX_HISTORY 50  // Maximum history size
+
+std::vector<std::string> history; // Command history buffer
+int history_index = -1;           // Index for navigating history
+
 inline void read_input_c(char *buffer, size_t max_length) {
-
-    struct termios orig_termios;
-    enable_raw_mode(&orig_termios);
-
-    size_t pos = 0;
+    size_t pos = 0;             // Current cursor position
+    size_t length = 0;          // Length of the input string in `buffer`
     char c;
+    std::string current_input;  // Keeps track of the current input for history navigation
 
-    while (1) {
+    while (true) {
         if (read(STDIN_FILENO, &c, 1) != 1) break; // Read a single character
 
         if (debug_enabled) printf("DEBUG: Read character: %c (0x%02X)\n", c, c);
 
-        // Handle Enter key (Return the input)
+        // Handle Enter (complete the line input)
         if (c == '\n' || c == '\r') {
             write(STDOUT_FILENO, "\n", 1);
-            buffer[pos] = '\0'; // Null terminate
+            buffer[length] = '\0'; // Null-terminate the input
+
+            if (length > 0) {
+                history.push_back(std::string(buffer)); // Save input to history
+                if (history.size() > MAX_HISTORY) history.erase(history.begin()); // Limit history
+            }
+
+            history_index = -1; // Reset history navigation
             break;
         }
 
-        // Handle Backspace (delete character before cursor)
-        if (c == 127 || c == 8) {
+        // Handle Backspace
+        if (c == 127 || c == 8) { // Backspace or Ctrl-H
             if (pos > 0) {
                 pos--;
-                write(STDOUT_FILENO, "\b \b", 3); // Move cursor back, erase, move back
+                length--;
+                memmove(buffer + pos, buffer + pos + 1, length - pos); // Remove the char at `pos`
+                buffer[length] = '\0';
+
+                // Update screen
+                write(STDOUT_FILENO, "\b", 1); // Move cursor back
+                write(STDOUT_FILENO, &buffer[pos], length - pos); // Redraw the rest of the line
+                write(STDOUT_FILENO, " ", 1); // Erase extra character on screen
+                write(STDOUT_FILENO, "\b", 1); // Move cursor back one space
+                for (size_t i = pos; i < length; i++) write(STDOUT_FILENO, "\b", 1); // Place cursor correctly
             }
             continue;
         }
 
-        // Handle Delete (delete character at cursor)
-        if (c == 27) {
+        // Handle Arrow Keys
+        if (c == 27) { // Escape sequence
             char seq[2];
             if (read(STDIN_FILENO, seq, 2) == 2) {
                 if (seq[0] == '[') {
                     switch (seq[1]) {
-                        case '3': {
-                            // Delete Key
-                            char discard;
-                            if (read(STDIN_FILENO, &discard, 1) == 1 && discard == '~') {
-                                write(STDOUT_FILENO, "\033[1P", 4); // Delete at cursor
+                        case 'A': // Up - Previous history
+                            if (!history.empty() && history_index + 1 < (int)history.size()) {
+                                if (history_index == -1) current_input = std::string(buffer, length); // Save current input
+                                history_index++;
+                                strncpy(buffer, history[history.size() - 1 - history_index].c_str(), max_length - 1);
+                                length = strlen(buffer);
+                                pos = length;
+                                buffer[length] = '\0';
+                                write(STDOUT_FILENO, "\33[2K\r", 4); // Clear line
+                                write(STDOUT_FILENO, buffer, length); // Display history item
                             }
                             continue;
-                        }
-                        case 'D': // Left Arrow
+                        case 'B': // Down - Next history
+                            if (history_index > 0) {
+                                history_index--;
+                                strncpy(buffer, history[history.size() - 1 - history_index].c_str(), max_length - 1);
+                            } else if (history_index == 0) {
+                                history_index = -1;
+                                strncpy(buffer, current_input.c_str(), max_length - 1);
+                            }
+                            length = strlen(buffer);
+                            pos = length;
+                            buffer[length] = '\0';
+                            write(STDOUT_FILENO, "\33[2K\r", 4); // Clear line
+                            write(STDOUT_FILENO, buffer, length); // Display history item
+                            continue;
+                        case 'D': // Left - Move cursor left
                             if (pos > 0) {
                                 write(STDOUT_FILENO, "\033[D", 3); // Move cursor left
                                 pos--;
                             }
                             continue;
-                        case 'C': // Right Arrow
-                            if (pos < strlen(buffer)) {
+                        case 'C': // Right - Move cursor right
+                            if (pos < length) {
                                 write(STDOUT_FILENO, "\033[C", 3); // Move cursor right
                                 pos++;
                             }
@@ -113,18 +152,36 @@ inline void read_input_c(char *buffer, size_t max_length) {
             continue;
         }
 
-        // Normal character input
-        if (pos < max_length - 1) {
-            buffer[pos++] = c;
-            write(STDOUT_FILENO, &c, 1); // Echo character
+        if (c == 1) { // Ctrl+A - Move to start of line
+            while (pos > 0) {
+                write(STDOUT_FILENO, "\033[D", 3); // Move left
+                pos--;
+            }
+            continue;
+        }
+
+        if (c == 5) { // Ctrl+E - Move to end of line
+            while (pos < length) {
+                write(STDOUT_FILENO, "\033[C", 3); // Move right
+                pos++;
+            }
+            continue;
+        }
+
+        // Handle Normal Character Input
+        if (length < max_length - 1) {
+            // Shift the buffer to the right starting from `pos`
+            memmove(buffer + pos + 1, buffer + pos, length - pos);
+            buffer[pos] = c;   // Insert character at cursor
+            length++;
+            pos++;
+
+            // Redraw updated input to the screen
+            write(STDOUT_FILENO, &buffer[pos - 1], length - pos + 1); // Write rest of the string
+            for (size_t i = pos; i < length; i++) write(STDOUT_FILENO, "\b", 1); // Move cursor back to correct position
         }
     }
-
-    disable_raw_mode(&orig_termios);
-    //return pos;
 }
-
-
 
 // Wrapper function to replace std::getline with read_input_c
 inline std::istream &custom_getline(std::istream &input, std::string &line) {
@@ -171,6 +228,7 @@ inline bool startup_loaded = false;
 
 
 // Function to interpret multiple statements and functions in the given text
+// use when loading forth from a file etc.
 inline void interpretText(const std::string& text)
 {
     std::istringstream stream(text);
@@ -178,7 +236,7 @@ inline void interpretText(const std::string& text)
     std::string accumulated_input;
     bool compiling = false;
 
-    while (custom_getline(std::cin, line))
+    while (std::getline(stream, line))
     {
         if (line.empty())
         {
@@ -200,7 +258,7 @@ inline void interpretText(const std::string& text)
             else if (word == ";")
             {
                 compiling = false;
-                //printf("Interpret text : [%s]\n", accumulated_input.c_str());
+               // printf("Interpret text : [%s]\n", accumulated_input.c_str());
                 interpreter(accumulated_input);
                 accumulated_input.clear();
                 break;
@@ -249,6 +307,7 @@ inline void slurpIn(const std::string& file_name = "./start.f")
 
         // Close the file
         file.close();
+
         interpretText(fileContent);
     }
 
@@ -275,7 +334,7 @@ inline std::string handleSpecialCommands(const std::string& input)
     }
     else if (input == "*STRINGS" || input == "*strings")
     {
-        strIntern.display_list();
+
         handled = true;
     }
     else if (input == "*QUIT" || input == "*quit")
@@ -454,19 +513,20 @@ inline bool processDumpCommands(auto& it, const auto& words, std::string& accumu
 
 inline void interactive_terminal()
 {
+    struct termios orig_termios;
+    enable_raw_mode(&orig_termios);
     std::string input;
     std::string accumulated_input;
     bool compiling = false;
+
     slurpIn("./start.f");
 
     // The infinite terminal loop
     while (true)
     {
         std::cout << (compiling ? "] " : "> ");
-
-        std::getline(std::cin, input); // Read a line of input from the terminal
-
-
+        std::cout.flush();
+        custom_getline(std::cin, input); // Read a line of input from the terminal
 
 
         if (input == "QUIT" || input == "quit")
@@ -534,8 +594,10 @@ inline void interactive_terminal()
             interpreter(accumulated_input); // Process the accumulated input using the outer_interpreter
             accumulated_input.clear();
             std::cout << " Ok" << std::endl;
+            std::cout.flush();
         }
     }
+    disable_raw_mode(&orig_termios);
 }
 
 

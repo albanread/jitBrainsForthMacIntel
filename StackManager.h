@@ -6,9 +6,7 @@
 #include <stdexcept>
 #include <iostream>
 #include <algorithm>
-#include "StringInterner.h"
 
-inline StringInterner& strIntern = StringInterner::getInstance();
 
 // Forward declaration
 class jitGenerator;
@@ -362,18 +360,6 @@ public:
         return val;
     }
 
-    // Decrement string ref on top of stack
-    void decSS()
-    {
-        size_t index = peekSS();
-        strIntern.decrementRef(index);
-    }
-
-    void incSS()
-    {
-        size_t index = peekSS();
-        strIntern.incrementRef(index);
-    }
 
     [[nodiscard]] uint64_t getDStop() const
     {

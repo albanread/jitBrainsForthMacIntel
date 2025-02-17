@@ -5,6 +5,8 @@
 #include "quit.h"
 #include "interpreter.h"
 
+
+
 // Standard exception messages
 const char *exception_messages[] = {
     "Unknown error", // 0
@@ -38,12 +40,13 @@ void raise_c(int eno) {
 
 // Signal handler for SIGINT
 void handle_sigint(int sig) {
-    printf("\nCaught SIGINT (%d), recovering...\n", sig);
     raise_c(9); // Raise the SIGINT-specific error
 }
 
 // The Quit function with setjmp for recovery
 void Quit() {
+
+
     // Set up the signal handler for SIGINT
     signal(SIGINT, handle_sigint);
 
@@ -56,6 +59,7 @@ void Quit() {
             sm.resetLS();
             sm.resetSS();
             sm.resetRS();
+
 
             // Run the main interactive loop
             try {
@@ -73,7 +77,7 @@ void Quit() {
 
         } else {
             // Recovery path: longjmp returns here when an exception or signal occurs
-            fprintf(stderr, "Recovering from runtime error or SIGINT...\n");
+
 
             sm.resetDS(); // Reset data stack
             sm.resetLS(); // Reset local stack

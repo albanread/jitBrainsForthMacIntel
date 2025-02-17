@@ -22,13 +22,15 @@ add_executable(jitBrainsForth
         interpreter.h
         utility.h
         quit.cpp
-        StringInterner.h
         Compiler.h
         CompilerUtility.h
         jitLabels.h
 
         tests.h
 )
+
+# Copy start.f to the build directory
+file(COPY ${CMAKE_SOURCE_DIR}/start.f DESTINATION ${CMAKE_BINARY_DIR})
 
 # Add the include path for asmjit
 target_include_directories(jitBrainsForth PRIVATE /usr/local/include)

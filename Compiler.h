@@ -4,7 +4,6 @@
 #include <string>
 #include "ForthDictionary.h"
 #include <unordered_set>
-#include "StringInterner.h"
 #include "JitContext.h"
 #include "JitGenerator.h"
 #include "CompilerUtility.h"

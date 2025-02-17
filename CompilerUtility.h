@@ -4,7 +4,7 @@
 #include <unordered_set>
 #include "ForthDictionary.h"
 #include "JitGenerator.h"
-#include "StringInterner.h"
+
 
 // Declaration of compileWord function
 void compileWord(const std::string& wordName, const std::string& compileText, const std::string& sourceCode);
@@ -111,7 +111,7 @@ inline std::string scanForLiterals(const std::string& compileText)
     std::string result;
     std::smatch match;
     std::string tmpText = compileText;
-    StringInterner& interner = StringInterner::getInstance();
+
 
     // Remove comments from the input text
     tmpText = std::regex_replace(tmpText, commentRegex, "");
@@ -121,16 +121,8 @@ inline std::string scanForLiterals(const std::string& compileText)
     {
         std::string literalStart = match[1].str(); // s" or ."
         std::string literalString = match[2].str(); // The literal content after the first space
+        printf("Literal found: [%s] [%s]\n", literalStart.c_str(), literalString.c_str());
 
-        // Intern the literal string content
-        auto internedPtr = interner.intern(literalString);
-        std::ostringstream replacementWord;
-        replacementWord << "sPtr_" << reinterpret_cast<std::uintptr_t>(internedPtr);
-
-        result += match.prefix().str();
-        result += literalStart + " " + replacementWord.str() + " ";
-
-        tmpText = match.suffix().str();
     }
     result += tmpText;
 

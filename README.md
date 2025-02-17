@@ -12,6 +12,12 @@ Our machine stack must be 16 byte aligned.
 This requires adjustment every time since every call uses 8 bytes.
 We must use relative calls, or indirect them.
 
+Other differences
+The C compilers are slightly different
+On the Mac we handle the SIGINT signal (ctrl/c) to interupt a long running command.
+On the Mac we need to enter raw terminal mode, and handle the arrow keys etc.
+
+
 
 There is also a Windows version of this Forth on this Github.
 
