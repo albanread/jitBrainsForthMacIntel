@@ -12,7 +12,135 @@
 #include "JitGenerator.h"
 #include "tests.h"
 #include "CompilerUtility.h"
+#include <termios.h>
+#include <unistd.h>
+#include <cstdlib>
+#include <cstdio>
+#include <cstdint>
 
+#define MAX_INPUT 1024
+#define MAX_WORD_LENGTH 16
+
+inline bool debug_enabled = true;  // Debug flag (default: off)
+
+// Function to enable or disable debug mode
+inline void set_debug_mode(bool enable) {
+    debug_enabled = enable;
+}
+
+
+struct termios t;
+// Enable raw mode
+
+inline void enable_raw_mode(struct termios *orig_termios) {
+    struct termios raw;
+    tcgetattr(STDIN_FILENO, orig_termios);
+    raw = *orig_termios;
+    raw.c_lflag &= ~(ECHO | ICANON); // Disable echo and canonical mode
+    raw.c_cc[VMIN] = 1; // Min characters to read
+    raw.c_cc[VTIME] = 0; // No timeout
+    tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
+
+    if (debug_enabled) printf("DEBUG: Raw mode enabled\n");
+}
+
+// Restore original terminal settings
+void disable_raw_mode(struct termios *orig_termios) {
+    tcsetattr(STDIN_FILENO, TCSAFLUSH, orig_termios);
+    if (debug_enabled) printf("DEBUG: Raw mode disabled\n");
+}
+
+
+// Read a line with arrow keys and backspace handling
+inline void read_input_c(char *buffer, size_t max_length) {
+
+    struct termios orig_termios;
+    enable_raw_mode(&orig_termios);
+
+    size_t pos = 0;
+    char c;
+
+    while (1) {
+        if (read(STDIN_FILENO, &c, 1) != 1) break; // Read a single character
+
+        if (debug_enabled) printf("DEBUG: Read character: %c (0x%02X)\n", c, c);
+
+        // Handle Enter key (Return the input)
+        if (c == '\n' || c == '\r') {
+            write(STDOUT_FILENO, "\n", 1);
+            buffer[pos] = '\0'; // Null terminate
+            break;
+        }
+
+        // Handle Backspace (delete character before cursor)
+        if (c == 127 || c == 8) {
+            if (pos > 0) {
+                pos--;
+                write(STDOUT_FILENO, "\b \b", 3); // Move cursor back, erase, move back
+            }
+            continue;
+        }
+
+        // Handle Delete (delete character at cursor)
+        if (c == 27) {
+            char seq[2];
+            if (read(STDIN_FILENO, seq, 2) == 2) {
+                if (seq[0] == '[') {
+                    switch (seq[1]) {
+                        case '3': {
+                            // Delete Key
+                            char discard;
+                            if (read(STDIN_FILENO, &discard, 1) == 1 && discard == '~') {
+                                write(STDOUT_FILENO, "\033[1P", 4); // Delete at cursor
+                            }
+                            continue;
+                        }
+                        case 'D': // Left Arrow
+                            if (pos > 0) {
+                                write(STDOUT_FILENO, "\033[D", 3); // Move cursor left
+                                pos--;
+                            }
+                            continue;
+                        case 'C': // Right Arrow
+                            if (pos < strlen(buffer)) {
+                                write(STDOUT_FILENO, "\033[C", 3); // Move cursor right
+                                pos++;
+                            }
+                            continue;
+                    }
+                }
+            }
+            continue;
+        }
+
+        // Normal character input
+        if (pos < max_length - 1) {
+            buffer[pos++] = c;
+            write(STDOUT_FILENO, &c, 1); // Echo character
+        }
+    }
+
+    disable_raw_mode(&orig_termios);
+    //return pos;
+}
+
+
+
+// Wrapper function to replace std::getline with read_input_c
+inline std::istream &custom_getline(std::istream &input, std::string &line) {
+    constexpr size_t MAX_INPUT_LENGTH = 1024;
+    char buffer[MAX_INPUT_LENGTH];
+
+    if (!input.good()) return input; // Handle stream errors
+
+    // Use your custom terminal input function
+    read_input_c(buffer, MAX_INPUT_LENGTH);
+
+    // Convert buffer to std::string
+    line = std::string(buffer);
+
+    return input;
+}
 
 
 // interpreter calls words, or pushes numbers.
@@ -335,7 +463,11 @@ inline void interactive_terminal()
     while (true)
     {
         std::cout << (compiling ? "] " : "> ");
+
         std::getline(std::cin, input); // Read a line of input from the terminal
+
+
+
 
         if (input == "QUIT" || input == "quit")
         {

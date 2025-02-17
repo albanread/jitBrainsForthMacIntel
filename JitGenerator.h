@@ -1030,7 +1030,7 @@ public:
         d.setDataDouble(initialValue);
 
         auto dataAddress = d.get_data_ptr();
-        d.setType(ForthWordType::CONSTANTFLOAT); // value type
+        d.setType(ForthWordType::FLOATCONSTANT); // value type
 
         a.comment(" ; ----- fetch value");
         loadDS(dataAddress);

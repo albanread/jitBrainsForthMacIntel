@@ -74,70 +74,64 @@ inline std::string ForthWordStateToString(const ForthWordState state)
 }
 
 // Enum representing various types a Forth word can have
-enum ForthWordType
-{
-    WORD = 0,
-    CONSTANT = 1 << 0,
-    VARIABLE = 1 << 1,
-    VALUE = 1 << 2,
-    STRING = 1 << 3,
-    FLOAT = 1 << 4,
-    ARRAY = 1 << 5,
-    STRINGARRAY = 1 << 6,
-    FLOATARRAY = 1 << 7,
-    ARRAYOFSTRING = 1 << 10,
-    ARRAYOFFLOAT = 1 << 11,
-    ARRAYOFARRAY = 1 << 13,
-    ARRAYOFSTRINGARRAY = 1 << 14,
-    ARRAYOFFLOATARRAY = 1 << 15,
-    ARRAYOFDOUBLEARRAY = 1 << 16,
-    ARRAYOFARRAYOFSTRING = 1 << 17,
-    ARRAYOFARRAYOFFLOAT = 1 << 18,
-    CONSTANTFLOAT = CONSTANT | FLOAT,
-    FLOATVALUE = VALUE | FLOAT,
-    RECORD = 1 << 20
+enum ForthWordType {
+    // Base type categories
+    WORD         = 1 << 0,  // General word
+    CONSTANT     = 1 << 1,  // Constant value
+    VARIABLE     = 1 << 2,  // Mutable variable
+    VALUE        = 1 << 3,  // Like VARIABLE, but with immediate assignment
+    RECORD       = 1 << 4,  // User-defined record type
+
+    // Data type categories
+    INTEGER      = 1 << 5,  // Default number type
+    FLOAT        = 1 << 6,  // Floating-point number
+    STRING       = 1 << 7,  // String type
+
+    // Array modifiers (can be combined with data types)
+    ARRAY        = 1 << 8,  // One-dimensional array
+    TWODIM       = 1 << 9,  // Two-dimensional array
+
+
+
+    // Combined types using logical hierarchy
+    FLOATCONSTANT = CONSTANT | FLOAT,  // Floating-point constant
+    FLOATVALUE    = VALUE | FLOAT ,     // Float assigned to a VALUE
+    FLOATVARIABLE = VARIABLE | FLOAT,   // Floating-point variable
+    INTEGERVALUE  = VALUE | INTEGER,   // Integer assigned to a VALUE
+    INTEGERARRAY  = ARRAY | INTEGER,   // Array of integers
+    STRINGVALUE   = VALUE | STRING,    // String assigned to a VALUE
+    FLOATARRAY    = ARRAY | FLOAT,     // Array of floating-point values
+    STRINGARRAY   = ARRAY | STRING,    // Array of strings
+
+
+
+
 };
-
-#include <string>
-#include <vector>
-#include <sstream>
-
-// Convert ForthWordType to a string for debugging
-inline std::string ForthWordTypeToString(const ForthWordType type)
-{
+inline std::string ForthWordTypeToString(ForthWordType type) {
     std::vector<std::string> components;
-
-    // Base types
     if (type & WORD) components.push_back("WORD");
+    // Base type category
     if (type & CONSTANT) components.push_back("CONSTANT");
     if (type & VARIABLE) components.push_back("VARIABLE");
     if (type & VALUE) components.push_back("VALUE");
-    if (type & STRING) components.push_back("STRING");
-    if (type & FLOAT) components.push_back("FLOAT");
-    if (type & ARRAY) components.push_back("ARRAY");
-    if (type & STRINGARRAY) components.push_back("STRINGARRAY");
-    if (type & FLOATARRAY) components.push_back("FLOATARRAY");
-    if (type & ARRAYOFSTRING) components.push_back("ARRAYOFSTRING");
-    if (type & ARRAYOFFLOAT) components.push_back("ARRAYOFFLOAT");
-    if (type & ARRAYOFARRAY) components.push_back("ARRAYOFARRAY");
-    if (type & ARRAYOFSTRINGARRAY) components.push_back("ARRAYOFSTRINGARRAY");
-    if (type & ARRAYOFFLOATARRAY) components.push_back("ARRAYOFFLOATARRAY");
-    if (type & ARRAYOFDOUBLEARRAY) components.push_back("ARRAYOFDOUBLEARRAY");
-    if (type & ARRAYOFARRAYOFSTRING) components.push_back("ARRAYOFARRAYOFSTRING");
-    if (type & ARRAYOFARRAYOFFLOAT) components.push_back("ARRAYOFARRAYOFFLOAT");
     if (type & RECORD) components.push_back("RECORD");
 
-    // Special cases for predefined combinations
-    if (type == CONSTANTFLOAT) return "CONSTANT FLOAT";
-    if (type == FLOATVALUE) return "FLOAT VALUE";
+    // Data type category
+    if (type & INTEGER) components.push_back("INTEGER");
+    if (type & FLOAT) components.push_back("FLOAT");
+    if (type & STRING) components.push_back("STRING");
+
+    // Array type
+    if (type & ARRAY) components.push_back("ARRAY");
+    if (type & TWODIM) components.push_back("2D ARRAY");
 
     // If no flags matched, return UNKNOWN
     if (components.empty()) return "UNKNOWN";
 
-    // Join components into a single string
+    // Convert vector to a space-separated string
     std::ostringstream oss;
     for (size_t i = 0; i < components.size(); ++i) {
-        if (i > 0) oss << " "; // Space separator
+        if (i > 0) oss << " ";
         oss << components[i];
     }
 
@@ -209,7 +203,7 @@ struct ForthWord
               ForthFunction terpFunc = nullptr,
               ForthWord* prev = nullptr)
         : generatorFunc(genny), compiledFunc(func),
-          immediateFunc(immFunc), terpFunc(terpFunc),
+          immediateFunc(immFunc), terpFunc(terpFunc), type(WORD),
           link(prev), state(ForthWordState::NORMAL), data(uint64_t(0)) // Default initialize to uint64_t(0)
     {
         std::strncpy(name, wordName, sizeof(name));
