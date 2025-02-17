@@ -16,6 +16,8 @@
 #include "jitLabels.h"
 
 const int INVALID_OFFSET = -9999;
+static const double EPSILON = 1e-9; // Epsilon for floating-point comparison
+static const uint64_t maskAbs = 0x7FFFFFFFFFFFFFFF;
 
 
 // support locals
@@ -1264,10 +1266,11 @@ public:
         }
         auto &a = *jc.assembler;
         commentWithWord(" ; ----- sprint prints string ");
-        popSS(asmjit::x86::rcx);
-        a.sub(asmjit::x86::rsp, 8);
-        a.call(prim_sindex);
-        a.add(asmjit::x86::rsp, 8);
+
+        a.push(asmjit::x86::rdi);
+        popDS(asmjit::x86::rdi);
+        a.call(asmjit::imm(reinterpret_cast<uint64_t>(prim_sindex))); // Call the function in rax
+        a.pop(asmjit::x86::rdi); // Restore RDI after the call
 
         a.push(asmjit::x86::rdi);
         popDS(asmjit::x86::rdi);
@@ -1509,7 +1512,7 @@ public:
         }
 
         auto &a = *jc.assembler;
-        a.comment(" ; ----- gen_dot");
+        a.comment(" ; ----- gen hex dot");
         popDS(asmjit::x86::rcx);
         preserveStackPointers();
         // Allocate space for the shadow space (32 bytes).
@@ -1539,13 +1542,10 @@ public:
 
         auto &a = *jc.assembler;
         a.comment(" ; ----- gen_emit");
-
         preserveStackPointers();
-        // Allocate space for the shadow space (32 bytes).
-        a.sub(asmjit::x86::rsp, 32);
+        a.push(asmjit::x86::rdi);
         a.call(asmjit::imm(reinterpret_cast<void *>(prim_depth)));
-        // Restore stack.
-        a.add(asmjit::x86::rsp, 32);
+        a.pop(asmjit::x86::rdi); // Restore RDI after the call
         restoreStackPointers();
     }
 
@@ -1560,10 +1560,9 @@ public:
 
         preserveStackPointers();
         // Allocate space for the shadow space (32 bytes).
-        a.sub(asmjit::x86::rsp, 32);
+        a.push(asmjit::x86::rdi);
         a.call(asmjit::imm(reinterpret_cast<void *>(prim_depth2)));
-        // Restore stack.
-        a.add(asmjit::x86::rsp, 32);
+        a.pop(asmjit::x86::rdi); // Restore RDI after the call
         restoreStackPointers();
     }
 
@@ -1665,7 +1664,9 @@ public:
 
         a.comment(" ; ----- gen_call");
         a.mov(asmjit::x86::rax, fn);
+        a.push(asmjit::x86::rdi);
         a.call(asmjit::x86::rax);
+        a.pop(asmjit::x86::rdi);
     }
 
 
@@ -1677,7 +1678,9 @@ public:
 
         a.comment(" ; ----- gen_call");
 
+        a.push(asmjit::x86::rdi);
         a.call(asmjit::imm(fn));
+        a.pop(asmjit::x86::rdi);
     }
 
     // Executable function pointer
@@ -2237,39 +2240,39 @@ public:
 
     static void genLeaveAgainOnEscapeKey(asmjit::x86::Assembler &a, const BeginAgainRepeatUntilLabel &beginLabels) {
         // optionally generate code to check for escape key pressed
-        if (jc.optLoopCheck) {
-            // if escape key pressed leave loop.
-            // shadow stack
-            a.comment("; -- check for escape key and leave if pressed");
-            a.push(asmjit::x86::rax);
-            a.sub(asmjit::x86::rsp, 8);
-            a.call(escapePressed);
-            a.add(asmjit::x86::rsp, 8);
-            // compare rax with 0
-            a.cmp(asmjit::x86::rax, 0);
-            a.pop(asmjit::x86::rax);
-            a.comment("; jump to leave label");
-            a.jne(beginLabels.leaveLabel);
-        }
+        // if (jc.optLoopCheck) {
+        //     // if escape key pressed leave loop.
+        //     // shadow stack
+        //     a.comment("; -- check for escape key and leave if pressed");
+        //     a.push(asmjit::x86::rax);
+        //     a.sub(asmjit::x86::rsp, 8);
+        //     a.call(escapePressed);
+        //     a.add(asmjit::x86::rsp, 8);
+        //     // compare rax with 0
+        //     a.cmp(asmjit::x86::rax, 0);
+        //     a.pop(asmjit::x86::rax);
+        //     a.comment("; jump to leave label");
+        //     a.jne(beginLabels.leaveLabel);
+        // }
     }
 
 
     static void genLeaveLoopOnEscapeKey(asmjit::x86::Assembler &a, const DoLoopLabel &l) {
-        // optionally generate code to check for escape key pressed
-        if (jc.optLoopCheck) {
-            // if escape key pressed leave loop.
-            // shadow stack
-            a.comment("; -- check for escape key and leave if pressed");
-            a.push(asmjit::x86::rax);
-            a.sub(asmjit::x86::rsp, 8);
-            a.call(escapePressed);
-            a.add(asmjit::x86::rsp, 8);
-            // compare rax with 0
-            a.cmp(asmjit::x86::rax, 0);
-            a.pop(asmjit::x86::rax);
-            a.comment("; jump to leave label");
-            a.jne(l.leaveLabel);
-        }
+        // // optionally generate code to check for escape key pressed
+        // if (jc.optLoopCheck) {
+        //     // if escape key pressed leave loop.
+        //     // shadow stack
+        //     a.comment("; -- check for escape key and leave if pressed");
+        //     a.push(asmjit::x86::rax);
+        //     a.sub(asmjit::x86::rsp, 8);
+        //     a.call(escapePressed);
+        //     a.add(asmjit::x86::rsp, 8);
+        //     // compare rax with 0
+        //     a.cmp(asmjit::x86::rax, 0);
+        //     a.pop(asmjit::x86::rax);
+        //     a.comment("; jump to leave label");
+        //     a.jne(l.leaveLabel);
+        // }
     }
 
 
@@ -4084,7 +4087,110 @@ shiftAction(shiftAmount);                    \
     }
 
 
-    constexpr static double tolerance = 1e-7;
+    static void genLoadXMM1(double value) {
+        // Use the existing `.data` section to embed the constant
+        asmjit::Section *dataSection = jc.code.sectionByName(".data");
+
+        if (nullptr == dataSection) {
+            throw std::runtime_error(".data section not found. Ensure the code holder is properly set up.");
+        }
+        dataSection->setAlignment(16); // Align the data section to 16 bytes (128-bit)
+
+        // Bind the variable label to the .data section
+        jc.assembler->section(dataSection); // Switch to the .data section
+        asmjit::Label valueLabel = jc.assembler->newLabel(); // Create a label for referencing the constant
+
+        jc.assembler->bind(valueLabel); // Bind the label to this memory location
+        jc.assembler->embedDouble(value); // Embed the double value in the section
+
+
+        jc.assembler->section(jc.code.textSection());
+        // Load the value from `.data` into xmm1
+        jc.assembler->movsd(asmjit::x86::xmm1, asmjit::x86::ptr(valueLabel)); // Load constant value into xmm1
+    }
+
+    static void genFApproxEquals() {
+        if (!jc.assembler) {
+            throw std::runtime_error("genFApproxEquals: Assembler not initialized");
+        }
+
+        auto &a = *jc.assembler;
+        a.comment(" ; ----- genFApproxEquals (Epsilon-Based Floating-Point Equality)");
+
+        asmjit::x86::Gp firstVal = asmjit::x86::rax;
+        asmjit::x86::Gp secondVal = asmjit::x86::rbx;
+
+        asmjit::x86::Xmm xmm0 = asmjit::x86::xmm0;
+        asmjit::x86::Xmm xmm1 = asmjit::x86::xmm1;
+        asmjit::x86::Xmm xmm2 = asmjit::x86::xmm2;
+
+        // Load EPSILON directly as immediate data
+        static const uint64_t EPSILON_BITS = 0x3DAA3B294F62C8C0; // 1e-9 as IEEE 754
+        a.mov(asmjit::x86::rax, EPSILON_BITS);
+        a.movq(xmm2, asmjit::x86::rax); // Load epsilon into xmm2
+
+        // Pop floating-point values
+        popDS(firstVal); // Get first floating-point value
+        popDS(secondVal); // Get second floating-point value
+
+        a.movq(xmm0, firstVal); // Move first value to XMM0
+        a.movq(xmm1, secondVal); // Move second value to XMM1
+
+        // Compute absolute difference |a - b|
+        a.subsd(xmm0, xmm1); // xmm0 = a - b
+        a.andpd(xmm0, asmjit::x86::ptr(reinterpret_cast<uint64_t>(&maskAbs))); // xmm0 = fabs(a - b)
+
+        // Compare fabs(a - b) < EPSILON
+        a.comisd(xmm0, xmm2); // Compare |a - b| and ε
+        a.setb(asmjit::x86::al); // Set AL to 1 if fabs(a - b) < EPSILON
+
+        a.movzx(firstVal, asmjit::x86::al); // Zero extend AL to full register
+        a.neg(firstVal); // Convert 1 to -1 (FORTH boolean convention)
+
+        pushDS(firstVal); // Push result (-1 for true, 0 for false)
+    }
+
+    static void genFApproxNotEquals() {
+        if (!jc.assembler) {
+            throw std::runtime_error("genFApproxNotEquals: Assembler not initialized");
+        }
+
+        auto &a = *jc.assembler;
+        a.comment(" ; ----- genFApproxNotEquals (Epsilon-Based Floating-Point Inequality)");
+
+        asmjit::x86::Gp firstVal = asmjit::x86::rax;
+        asmjit::x86::Gp secondVal = asmjit::x86::rbx;
+
+        asmjit::x86::Xmm xmm0 = asmjit::x86::xmm0;
+        asmjit::x86::Xmm xmm1 = asmjit::x86::xmm1;
+        asmjit::x86::Xmm xmm2 = asmjit::x86::xmm2;
+
+        // Load EPSILON directly as immediate data
+        static const uint64_t EPSILON_BITS = 0x3DAA3B294F62C8C0; // 1e-9 as IEEE 754
+        a.mov(asmjit::x86::rax, EPSILON_BITS);
+        a.movq(xmm2, asmjit::x86::rax); // Load epsilon into xmm2
+
+        // Pop floating-point values
+        popDS(firstVal); // Get first floating-point value
+        popDS(secondVal); // Get second floating-point value
+
+        a.movq(xmm0, firstVal); // Move first value to XMM0
+        a.movq(xmm1, secondVal); // Move second value to XMM1
+
+        // Compute absolute difference |a - b|
+        a.subsd(xmm0, xmm1); // xmm0 = a - b
+        a.andpd(xmm0, asmjit::x86::ptr(reinterpret_cast<uint64_t>(&maskAbs))); // xmm0 = fabs(a - b)
+
+        // Compare fabs(a - b) >= EPSILON
+        a.comisd(xmm2, xmm0); // Compare EPSILON with |a - b|
+        a.setbe(asmjit::x86::al); // Set AL to 1 if EPSILON <= fabs(a - b) (not approximately equal)
+
+        a.movzx(firstVal, asmjit::x86::al); // Zero extend AL to full register
+        a.neg(firstVal); // Convert 1 to -1 (FORTH boolean convention)
+
+        pushDS(firstVal); // Push result (-1 for true, 0 for false)
+    }
+
 
     static void genFDot() {
         if (!jc.assembler) {
@@ -4115,39 +4221,6 @@ shiftAction(shiftAmount);                    \
         // Restore the stack pointers
         restoreStackPointers();
     }
-
-
-    //
-    //     static void genFApproxEqual() {
-    //     if (!jc.assembler) {
-    //         throw std::runtime_error("genFApproxEqual: Assembler not initialized");
-    //     }
-    //
-    //     auto& a = *jc.assembler;
-    //     a.comment(" ; ----- genFApproxEqual");
-    //
-    //     asmjit::x86::Gp firstVal = asmjit::x86::rax;
-    //     asmjit::x86::Gp secondVal = asmjit::x86::rbx;
-    //     asmjit::x86::Gp result = asmjit::x86::rcx;
-    //
-    //     a.comment(" ; Compare if two floating-point values are approximately equal");
-    //     double epsilon = 1e-9;                    // Define a small tolerance value
-    //     asmjit::x86::Mem epsilonMem = a.newDoubleConst(asmjit::ConstPool::kScopeGlobal, epsilon);
-    //
-    //     popDS(firstVal);                          // Pop the first floating-point value
-    //     popDS(secondVal);                         // Pop the second floating-point value
-    //     a.movq(asmjit::x86::xmm0, firstVal);      // Move the first value to XMM0
-    //     a.movq(asmjit::x86::xmm1, secondVal);     // Move the second value to XMM1
-    //
-    //     a.subsd(asmjit::x86::xmm0, asmjit::x86::xmm1); // xmm0 = firstVal - secondVal
-    //     a.movsd(asmjit::x86::xmm1, epsilonMem);        // Move epsilon into xmm1
-    //     a.abss(asmjit::x86::xmm0);                    // Take the absolute value of the difference
-    //
-    //     a.comisd(asmjit::x86::xmm0, asmjit::x86::xmm1); // Compare the absolute difference with epsilon
-    //     a.setb(asmjit::x86::al);                   // Set AL if less than epsilon (i.e., approximately equal)
-    //     a.movzx(result, asmjit::x86::al);          // Zero extend AL to the full register
-    //     pushDS(result);                            // Push the result (0 for false, 1 for true)
-    // }
 
 
 private

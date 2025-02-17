@@ -98,32 +98,52 @@ enum ForthWordType
     RECORD = 1 << 20
 };
 
+#include <string>
+#include <vector>
+#include <sstream>
+
 // Convert ForthWordType to a string for debugging
 inline std::string ForthWordTypeToString(const ForthWordType type)
 {
-    switch (type)
-    {
-    case WORD: return "WORD";
-    case CONSTANT: return "CONSTANT";
-    case VARIABLE: return "VARIABLE";
-    case VALUE: return "VALUE";
-    case STRING: return "STRING";
-    case FLOAT: return "FLOAT";
-    case ARRAY: return "ARRAY";
-    case STRINGARRAY: return "STRINGARRAY";
-    case FLOATARRAY: return "FLOATARRAY";
-    case ARRAYOFSTRING: return "ARRAYOFSTRING";
-    case ARRAYOFFLOAT: return "ARRAYOFFLOAT";
-    case ARRAYOFARRAY: return "ARRAYOFARRAY";
-    case ARRAYOFSTRINGARRAY: return "ARRAYOFSTRINGARRAY";
-    case ARRAYOFFLOATARRAY: return "ARRAYOFFLOATARRAY";
-    case ARRAYOFDOUBLEARRAY: return "ARRAYOFDOUBLEARRAY";
-    case ARRAYOFARRAYOFSTRING: return "ARRAYOFARRAYOFSTRING";
-    case ARRAYOFARRAYOFFLOAT: return "ARRAYOFARRAYOFFLOAT";
-    case RECORD: return "RECORD";
-    default: return "UNKNOWN";
+    std::vector<std::string> components;
+
+    // Base types
+    if (type & WORD) components.push_back("WORD");
+    if (type & CONSTANT) components.push_back("CONSTANT");
+    if (type & VARIABLE) components.push_back("VARIABLE");
+    if (type & VALUE) components.push_back("VALUE");
+    if (type & STRING) components.push_back("STRING");
+    if (type & FLOAT) components.push_back("FLOAT");
+    if (type & ARRAY) components.push_back("ARRAY");
+    if (type & STRINGARRAY) components.push_back("STRINGARRAY");
+    if (type & FLOATARRAY) components.push_back("FLOATARRAY");
+    if (type & ARRAYOFSTRING) components.push_back("ARRAYOFSTRING");
+    if (type & ARRAYOFFLOAT) components.push_back("ARRAYOFFLOAT");
+    if (type & ARRAYOFARRAY) components.push_back("ARRAYOFARRAY");
+    if (type & ARRAYOFSTRINGARRAY) components.push_back("ARRAYOFSTRINGARRAY");
+    if (type & ARRAYOFFLOATARRAY) components.push_back("ARRAYOFFLOATARRAY");
+    if (type & ARRAYOFDOUBLEARRAY) components.push_back("ARRAYOFDOUBLEARRAY");
+    if (type & ARRAYOFARRAYOFSTRING) components.push_back("ARRAYOFARRAYOFSTRING");
+    if (type & ARRAYOFARRAYOFFLOAT) components.push_back("ARRAYOFARRAYOFFLOAT");
+    if (type & RECORD) components.push_back("RECORD");
+
+    // Special cases for predefined combinations
+    if (type == CONSTANTFLOAT) return "CONSTANT FLOAT";
+    if (type == FLOATVALUE) return "FLOAT VALUE";
+
+    // If no flags matched, return UNKNOWN
+    if (components.empty()) return "UNKNOWN";
+
+    // Join components into a single string
+    std::ostringstream oss;
+    for (size_t i = 0; i < components.size(); ++i) {
+        if (i > 0) oss << " "; // Space separator
+        oss << components[i];
     }
+
+    return oss.str();
 }
+
 
 // Tokenizer class to split Forth source code into words
 class ForthTokenizer {

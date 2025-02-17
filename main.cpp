@@ -3,9 +3,6 @@
 #include "ForthDictionary.h"
 #include "JitGenerator.h"
 #include "quit.h"
-#include <thread>
-
-
 
 JitGenerator& gen = JitGenerator::getInstance();
 StringInterner& interner = StringInterner::getInstance();
@@ -93,6 +90,9 @@ void add_words()
     // floating comparisons
     d.addWord("f<", JitGenerator::genFLess, JitGenerator::build_forth(JitGenerator::genFLess), nullptr, nullptr);
     d.addWord("f>", JitGenerator::genFGreater, JitGenerator::build_forth(JitGenerator::genFGreater), nullptr, nullptr);
+    d.addWord("f=", JitGenerator::genFApproxEquals, JitGenerator::build_forth(JitGenerator::genFApproxEquals), nullptr, nullptr);
+    d.addWord("f<>", JitGenerator::genFApproxNotEquals, JitGenerator::build_forth(JitGenerator::genFApproxNotEquals), nullptr, nullptr);
+
 
     // print float
     d.addWord("f.", JitGenerator::genFDot, JitGenerator::build_forth(JitGenerator::genFDot), nullptr, nullptr);
@@ -218,14 +218,23 @@ void add_words()
 
 }
 
-typedef void* HINSTANCE;
-typedef char* LPSTR;
+
+
+
+
+void handle_sigint(int sig) {
+    printf("\nCaught SIGINT (%d), but not exiting.\n", sig);
+
+}
+
+
 int main(int argc, char* argv[]){
+
+    // does not work at all.
+    signal(SIGINT, handle_sigint);
 
     jc.loggingOFF();
     add_words();
     Quit();
-
-
     return 0;
 }
