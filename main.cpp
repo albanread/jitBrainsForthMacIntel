@@ -220,18 +220,7 @@ void add_words()
 
 
 
-
-
-void handle_sigint(int sig) {
-    printf("\nCaught SIGINT (%d), but not exiting.\n", sig);
-
-}
-
-
 int main(int argc, char* argv[]){
-
-    // does not work at all.
-    signal(SIGINT, handle_sigint);
 
     jc.loggingOFF();
     add_words();

@@ -178,7 +178,7 @@ inline void interpretText(const std::string& text)
     std::string accumulated_input;
     bool compiling = false;
 
-    while (std::getline(stream, line))
+    while (custom_getline(std::cin, line))
     {
         if (line.empty())
         {
