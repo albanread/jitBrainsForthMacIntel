@@ -11,44 +11,42 @@
 #include <cstdint>
 
 extern "C" {
-inline void printDecimal(int64_t number)
-{
+inline void putchars(const char *s) {
+    fputs(s, stdout);
+}
+
+
+inline void printDecimal(int64_t number) {
     //printf("number is %ld", number);
     std::cout << std::to_string(number);
 }
 
-inline void printUnsignedDecimal(uint64_t number)
-{
+inline void printUnsignedDecimal(uint64_t number) {
     std::cout << std::to_string(number);
 }
 
-inline void printUnsignedHex(uint64_t number)
-{
+inline void printUnsignedHex(uint64_t number) {
     std::ostringstream oss;
     oss << "0x" << std::hex << number;
     std::cout << oss.str() << std::endl;
 }
 
-inline void printHex(int64_t number)
-{
+inline void printHex(int64_t number) {
     std::ostringstream oss;
-    oss << "0x" <<  std::hex << number;
+    oss << "0x" << std::hex << number;
     std::cout << oss.str() << std::endl;
 }
 
-inline void printBinary(int64_t number)
-{
+inline void printBinary(int64_t number) {
     std::cout << "0b" << std::bitset<64>(number);
 }
 
-inline void printUnsignedBinary(uint64_t number)
-{
+inline void printUnsignedBinary(uint64_t number) {
     std::cout << "0b" << std::bitset<64>(number);
 }
 }
 
-inline std::string trim(const std::string& str)
-{
+inline std::string trim(const std::string &str) {
     const size_t first = str.find_first_not_of(' ');
     if (first == std::string::npos)
         return ""; // no content
@@ -57,7 +55,7 @@ inline std::string trim(const std::string& str)
     return str.substr(first, (last - first + 1));
 }
 
-inline bool is_float(const std::string& s) {
+inline bool is_float(const std::string &s) {
     if (s.empty()) return false;
     size_t startIndex = 0;
     bool hasDecimalPoint = false;
@@ -83,32 +81,26 @@ inline bool is_float(const std::string& s) {
 }
 
 
-inline bool is_number(const std::string& s)
-{
+inline bool is_number(const std::string &s) {
     if (s.empty()) return false;
     size_t startIndex = 0;
 
     // Check for an optional leading minus
-    if (s[0] == '-')
-    {
+    if (s[0] == '-') {
         if (s.length() == 1) return false; // only '-' is not a valid number
         startIndex = 1;
     }
 
-    if (startIndex + 2 < s.length() && s[startIndex] == '0')
-    {
+    if (startIndex + 2 < s.length() && s[startIndex] == '0') {
         if (s[startIndex + 1] == 'x' || s[startIndex + 1] == 'X') // Hexadecimal check
         {
-            for (size_t i = startIndex + 2; i < s.length(); ++i)
-            {
+            for (size_t i = startIndex + 2; i < s.length(); ++i) {
                 if (!std::isxdigit(s[i])) return false;
             }
             return true;
-        }
-        else if (s[startIndex + 1] == 'b' || s[startIndex + 1] == 'B') // Binary check
+        } else if (s[startIndex + 1] == 'b' || s[startIndex + 1] == 'B') // Binary check
         {
-            for (size_t i = startIndex + 2; i < s.length(); ++i)
-            {
+            for (size_t i = startIndex + 2; i < s.length(); ++i) {
                 if (s[i] != '0' && s[i] != '1') return false;
             }
             return true;
@@ -116,16 +108,14 @@ inline bool is_number(const std::string& s)
     }
 
     // Decimal check
-    for (size_t i = startIndex; i < s.length(); ++i)
-    {
+    for (size_t i = startIndex; i < s.length(); ++i) {
         if (!std::isdigit(s[i])) return false;
     }
 
     return true;
 }
 
-inline std::vector<std::string> split(const std::string& str)
-{
+inline std::vector<std::string> split(const std::string &str) {
     std::vector<std::string> result;
     std::istringstream iss(str);
     for (std::string word; iss >> word;)
@@ -133,15 +123,14 @@ inline std::vector<std::string> split(const std::string& str)
     return result;
 }
 
-inline std::string to_lower(const std::string& s)
-{
+inline std::string to_lower(const std::string &s) {
     std::string result(s);
     std::transform(result.begin(), result.end(), result.begin(), [](unsigned char c) { return std::tolower(c); });
     return result;
 }
 
-inline void dump(const void* address) {
-    const unsigned char* addr = static_cast<const unsigned char*>(address);
+inline void dump(const void *address) {
+    const unsigned char *addr = static_cast<const unsigned char *>(address);
     size_t length = 32;
 
     for (size_t i = 0; i < length; i += 16) {
@@ -178,8 +167,6 @@ inline void dump(const void* address) {
 inline void printFloat(double number) {
     std::cout << number;
 }
-
-
 
 
 #endif //UTILITY_H

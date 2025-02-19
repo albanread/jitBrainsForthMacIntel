@@ -83,12 +83,10 @@ void ForthDictionary::addCompileOnlyImmediate(const char* name,
 }
 
 void ForthDictionary::addInterpretOnlyImmediate(const char* name,
-                                                ForthFunction generatorFunc,
-                                                ForthFunction compiledFunc,
-                                                ForthFunction immediateFunc,
                                                 ForthFunction immTerpFunc)
 {
-    addWord(name, generatorFunc, compiledFunc, immediateFunc, immTerpFunc, "");
+    addWord(name, nullptr, nullptr, nullptr,
+        immTerpFunc, "");
     latestWord->type = ForthWordType::WORD;
     latestWord->state = ForthWordState::INTERPRET_ONLY_IMMEDIATE;
 }

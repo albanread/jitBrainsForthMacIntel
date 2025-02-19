@@ -267,8 +267,8 @@ public:
                      ForthFunction immTerpFunc);
     void addCompileOnlyImmediate(const char* name, ForthFunction generatorFunc, ForthFunction compiledFunc,
                                  ForthFunction immediateFunc, ForthFunction immTerpFunc);
-    void addInterpretOnlyImmediate(const char* name, ForthFunction generatorFunc, ForthFunction compiledFunc,
-                                   ForthFunction immediateFunc, ForthFunction immTerpFunc);
+    void addInterpretOnlyImmediate(const char *name,
+                                   ForthFunction immTerpFunc);
 
     // Find a word in the dictionary
     ForthWord* findWord(const char* name) const;

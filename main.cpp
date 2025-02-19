@@ -172,15 +172,15 @@ void add_words()
     //d.addWord("s.", JitGenerator::genPrint, JitGenerator::build_forth(JitGenerator::genPrint), nullptr, nullptr);
 
     // immediate words that create variables
-    d.addInterpretOnlyImmediate("value", nullptr, nullptr, nullptr, JitGenerator::genImmediateValue);
-    d.addInterpretOnlyImmediate("fvalue", nullptr, nullptr, nullptr, JitGenerator::genImmediateFvalue);
-    d.addInterpretOnlyImmediate("array", nullptr, nullptr, nullptr, JitGenerator::genImmediateArray);
+    d.addInterpretOnlyImmediate("value", JitGenerator::genImmediateValue);
+    d.addInterpretOnlyImmediate("fvalue", JitGenerator::genImmediateFvalue);
+    d.addInterpretOnlyImmediate("array", JitGenerator::genImmediateArray);
 
-    d.addInterpretOnlyImmediate("string", nullptr, nullptr, nullptr, JitGenerator::genImmediateStringValue);
-    d.addInterpretOnlyImmediate("constant", nullptr, nullptr, nullptr, JitGenerator::genImmediateConstant);
-    d.addInterpretOnlyImmediate("variable", nullptr, nullptr, nullptr, JitGenerator::genImmediateVariable);
+    d.addInterpretOnlyImmediate("string", JitGenerator::genImmediateStringValue);
+    d.addInterpretOnlyImmediate("constant", JitGenerator::genImmediateConstant);
+    d.addInterpretOnlyImmediate("variable", JitGenerator::genImmediateVariable);
 
-    d.addInterpretOnlyImmediate("fconstant", nullptr, nullptr, nullptr, JitGenerator::genImmediateConstant);
+    d.addInterpretOnlyImmediate("fconstant", JitGenerator::genImmediateConstant);
 
 
 
@@ -194,6 +194,9 @@ void add_words()
     d.addWord(".s", nullptr, JitGenerator::dotS, nullptr, nullptr);
     d.addWord("words", nullptr, JitGenerator::words, nullptr, nullptr);
     d.addWord("see", nullptr, nullptr, nullptr, JitGenerator::see);
+
+    d.addWord(".\"", nullptr, nullptr, nullptr, JitGenerator::doDotQuote);
+
 
 }
 

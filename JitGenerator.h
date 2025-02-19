@@ -13,6 +13,7 @@
 #include "quit.h"
 #include <cmath>
 #include "jitLabels.h"
+#include "StringStorage.h"
 
 const int INVALID_OFFSET = -9999;
 static const double EPSILON = 1e-9; // Epsilon for floating-point comparison
@@ -468,10 +469,13 @@ public:
 
     // display details on word
     static void see() {
-        const auto &words = *jc.words;
         size_t pos = jc.pos_next_word + 1;
-        std::string w = words[pos];
-        jc.word = w;
+        if (tokens[pos].type != TOKEN_WORD) {
+            throw std::runtime_error("VARIABLE: Expected word token");
+        }
+        std::string word = tokens[pos].value;
+        jc.word = word;
+        auto w = word;
         // display word w
         d.displayWord(w);
         jc.pos_last_word = pos;
@@ -481,11 +485,14 @@ public:
     // The TO word safely updates the container word
     // in compile mode only.
     static void genTO() {
-        const auto &words = *jc.words;
         size_t pos = jc.pos_next_word + 1;
+        if (tokens[pos].type != TOKEN_WORD) {
+            throw std::runtime_error("VARIABLE: Expected word token");
+        }
 
-        std::string w = words[pos];
-        jc.word = w;
+        std::string word = tokens[pos].value;
+        jc.word = word;
+        auto w = word;
         // This needs to be a word we can store things in.
 
         if (!jc.assembler) {
@@ -582,7 +589,6 @@ public:
             {
                 // Get the address of the variable's data
                 auto *variable_address = reinterpret_cast<int64_t *>(d.get_data_ptr());
-
             }
             jc.pos_last_word = pos;
         } else {
@@ -594,12 +600,15 @@ public:
     // The TO word safely updates the container word
     // in interpret mode only.
     static void execTO() {
-        const auto &words = *jc.words;
+
         size_t pos = jc.pos_next_word + 1;
+        if (tokens[pos].type != TOKEN_WORD) {
+            throw std::runtime_error("VARIABLE: Expected word token");
+        }
 
-        std::string w = words[pos];
-        jc.word = w;
-
+        std::string word = tokens[pos].value;
+        jc.word = word;
+        auto w = word;
 
         // Get the word from the dictionary
         auto fword = d.findWord(w.c_str());
@@ -645,7 +654,6 @@ public:
                 *reinterpret_cast<int64_t *>(variable_address) = value;
             } else if (word_type == ForthWordType::STRING) // variable
             {
-
             }
             jc.pos_last_word = pos;
         } else {
@@ -656,10 +664,12 @@ public:
 
     // char a . = 97
     static void genImmediateChar() {
-        const auto &words = *jc.words;
         size_t pos = jc.pos_next_word + 1;
-        // Get the next word from the input stream
-        std::string word = words[pos];
+        if (tokens[pos].type != TOKEN_WORD) {
+            throw std::runtime_error("VARIABLE: Expected word token");
+        }
+
+        std::string word = tokens[pos].value;
         jc.word = word;
         // Extract the first character from the word
         char charValue = word.front();
@@ -680,10 +690,13 @@ public:
 
 
     static void genTerpImmediateChar() {
-        const auto &words = *jc.words;
         size_t pos = jc.pos_next_word + 1;
-        // Get the next word from the input stream
-        std::string word = words[pos];
+        if (tokens[pos].type != TOKEN_WORD) {
+            throw std::runtime_error("VARIABLE: Expected word token");
+        }
+
+        std::string word = tokens[pos].value;
+        jc.word = word;
         // Extract the first character from the word
         char charValue = word.front();
         auto initialValue = static_cast<uint64_t>(charValue);
@@ -704,11 +717,13 @@ public:
     }
 
     static void genImmediateArray() {
-        const auto &words = *jc.words;
         size_t pos = jc.pos_next_word + 1;
-        std::string word = words[pos];
-        jc.word = word;
+        if (tokens[pos].type != TOKEN_WORD) {
+            throw std::runtime_error("VARIABLE: Expected word token");
+        }
 
+        std::string word = tokens[pos].value;
+        jc.word = word;
         // Pop the array size from the data stack
         auto arraySize = sm.popDS();
         //printf("initialValue: %llu\n", initialValue);
@@ -762,12 +777,13 @@ public:
     // immediate value, runs when value is called.
     // 10 VALUE fred
     static void genImmediateValue() {
-        const auto &words = *jc.words;
         size_t pos = jc.pos_next_word + 1;
+        if (tokens[pos].type != TOKEN_WORD) {
+            throw std::runtime_error("VARIABLE: Expected word token");
+        }
 
-        std::string word = words[pos];
+        std::string word = tokens[pos].value;
         jc.word = word;
-
 
         // Pop the initial value from the data stack
         auto initialValue = sm.popDS();
@@ -797,12 +813,14 @@ public:
     // immediate value, runs when value is called.
     // 10.0 FVALUE fred
     static void genImmediateFvalue() {
-        const auto &words = *jc.words;
+
         size_t pos = jc.pos_next_word + 1;
+        if (tokens[pos].type != TOKEN_WORD) {
+            throw std::runtime_error("VARIABLE: Expected word token");
+        }
 
-        std::string word = words[pos];
+        std::string word = tokens[pos].value;
         jc.word = word;
-
 
         // Pop the initial value from the data stack
         auto initialValue = sm.popDS();
@@ -833,10 +851,13 @@ public:
     // immediate value, runs when value is called.
     // 10 VALUE fred
     static void genImmediateConstant() {
-        const auto &words = *jc.words;
-        size_t pos = jc.pos_next_word + 1;
 
-        std::string word = words[pos];
+        size_t pos = jc.pos_next_word + 1;
+        if (tokens[pos].type != TOKEN_WORD) {
+            throw std::runtime_error("VARIABLE: Expected word token");
+        }
+
+        std::string word = tokens[pos].value;
         jc.word = word;
         // Pop the initial value from the data stack
         auto initialValue = sm.popDS();
@@ -864,10 +885,14 @@ public:
 
 
     static void genImmediatefConstant() {
-        const auto &words = *jc.words;
+
         size_t pos = jc.pos_next_word + 1;
 
-        std::string word = words[pos];
+        if (tokens[pos].type != TOKEN_WORD) {
+            throw std::runtime_error("VARIABLE: Expected word token");
+        }
+
+        std::string word = tokens[pos].value;
         jc.word = word;
 
         // Pop the initial value from the data stack
@@ -909,10 +934,12 @@ public:
     // s" literal string" VALUE fred
     static void genImmediateStringValue() {
 
-        const auto &words = *jc.words;
         size_t pos = jc.pos_next_word + 1;
+        if (tokens[pos].type != TOKEN_WORD) {
+            throw std::runtime_error("VARIABLE: Expected word token");
+        }
 
-        std::string word = words[pos];
+        std::string word = tokens[pos].value;
         jc.word = word;
 
 
@@ -922,10 +949,14 @@ public:
 
 
     static void genImmediateVariable() {
-        const auto &words = *jc.words;
+
         size_t pos = jc.pos_next_word + 1;
 
-        std::string word = words[pos];
+        if (tokens[pos].type != TOKEN_WORD) {
+            throw std::runtime_error("VARIABLE: Expected word token");
+        }
+
+        std::string word = tokens[pos].value;
         jc.word = word;
 
         jc.resetContext();
@@ -952,8 +983,6 @@ public:
         // Update position
         jc.pos_last_word = pos;
     }
-
-
 
 
     //
@@ -3334,10 +3363,11 @@ operation();                           \
     GEN_INC_DEC_FN(gen16Dec, genSubLong, 16)
 
     static void genMulBy10() {
+
         auto &a = *jc.assembler;
         asmjit::x86::Gp ds = asmjit::x86::r15; // Stack pointer register
         asmjit::x86::Gp tempValue = asmjit::x86::rax; // Temporary register for value
-        asmjit::x86::Gp tempResult = asmjit::x86::rdx; // Temporary register for intermediate result
+        asmjit::x86::Gp tempResult = asmjit::x86::rbx; // Temporary register for intermediate result
 
         a.comment("; multiply by ten");
         // Load the top stack value into tempValue
@@ -3879,6 +3909,24 @@ shiftAction(shiftAmount);                    \
         // Restore the stack pointers
         restoreStackPointers();
     }
+
+
+    // while interpreting, just display the strings from the input token stream.
+    static void doDotQuote() {
+        jc.pos_next_word++;
+        if (Token t = tokens[jc.pos_next_word]; t.type==TOKEN_STRING) {
+            putchars(t.value);
+        }
+    }
+
+    static void doSQuote() {
+        putchars(jc.next_token.value);
+        print_token_list(tokens);
+    }
+
+
+
+
 
 
 private

@@ -18,17 +18,12 @@
 #include <cstdint>
 #include <cstring>
 
-
-#define MAX_INPUT 1024
-#define MAX_WORD_LENGTH 16
-
-inline bool debug_enabled = false;  // Debug flag (default: off)
+inline bool debug_enabled = false; // Debug flag (default: off)
 
 // Function to enable or disable debug mode
 inline void set_debug_mode(bool enable) {
     debug_enabled = enable;
 }
-
 
 struct termios t;
 // Enable raw mode
@@ -52,18 +47,16 @@ void disable_raw_mode(struct termios *orig_termios) {
 }
 
 
-
-
 #define MAX_HISTORY 50  // Maximum history size
 
 std::vector<std::string> history; // Command history buffer
-int history_index = -1;           // Index for navigating history
+int history_index = -1; // Index for navigating history
 
 inline void read_input_c(char *buffer, size_t max_length) {
-    size_t pos = 0;             // Current cursor position
-    size_t length = 0;          // Length of the input string in `buffer`
+    size_t pos = 0; // Current cursor position
+    size_t length = 0; // Length of the input string in `buffer`
     char c;
-    std::string current_input;  // Keeps track of the current input for history navigation
+    std::string current_input; // Keeps track of the current input for history navigation
 
     while (true) {
         if (read(STDIN_FILENO, &c, 1) != 1) break; // Read a single character
@@ -85,7 +78,8 @@ inline void read_input_c(char *buffer, size_t max_length) {
         }
 
         // Handle Backspace
-        if (c == 127 || c == 8) { // Backspace or Ctrl-H
+        if (c == 127 || c == 8) {
+            // Backspace or Ctrl-H
             if (pos > 0) {
                 pos--;
                 length--;
@@ -103,14 +97,16 @@ inline void read_input_c(char *buffer, size_t max_length) {
         }
 
         // Handle Arrow Keys
-        if (c == 27) { // Escape sequence
+        if (c == 27) {
+            // Escape sequence
             char seq[2];
             if (read(STDIN_FILENO, seq, 2) == 2) {
                 if (seq[0] == '[') {
                     switch (seq[1]) {
                         case 'A': // Up - Previous history
-                            if (!history.empty() && history_index + 1 < (int)history.size()) {
-                                if (history_index == -1) current_input = std::string(buffer, length); // Save current input
+                            if (!history.empty() && history_index + 1 < (int) history.size()) {
+                                if (history_index == -1) current_input = std::string(buffer, length);
+                                // Save current input
                                 history_index++;
                                 strncpy(buffer, history[history.size() - 1 - history_index].c_str(), max_length - 1);
                                 length = strlen(buffer);
@@ -152,7 +148,8 @@ inline void read_input_c(char *buffer, size_t max_length) {
             continue;
         }
 
-        if (c == 1) { // Ctrl+A - Move to start of line
+        if (c == 1) {
+            // Ctrl+A - Move to start of line
             while (pos > 0) {
                 write(STDOUT_FILENO, "\033[D", 3); // Move left
                 pos--;
@@ -160,7 +157,8 @@ inline void read_input_c(char *buffer, size_t max_length) {
             continue;
         }
 
-        if (c == 5) { // Ctrl+E - Move to end of line
+        if (c == 5) {
+            // Ctrl+E - Move to end of line
             while (pos < length) {
                 write(STDOUT_FILENO, "\033[C", 3); // Move right
                 pos++;
@@ -172,7 +170,7 @@ inline void read_input_c(char *buffer, size_t max_length) {
         if (length < max_length - 1) {
             // Shift the buffer to the right starting from `pos`
             memmove(buffer + pos + 1, buffer + pos, length - pos);
-            buffer[pos] = c;   // Insert character at cursor
+            buffer[pos] = c; // Insert character at cursor
             length++;
             pos++;
 
@@ -199,27 +197,370 @@ inline std::istream &custom_getline(std::istream &input, std::string &line) {
     return input;
 }
 
+void skip_whitespace(const char **input) {
+    while (**input && isspace(**input)) {
+        (*input)++;
+    }
+}
 
-// interpreter calls words, or pushes numbers.
-inline void interpreter(const std::string& sourceCode)
-{
-    const auto words = splitAndLogWords(sourceCode);
 
-    size_t i = 0;
-    while (i < words.size())
-    {
-        const auto& word = words[i];
-        if (logging) printf("Interpreter ... processing word: [%s]\n", word.c_str());
+int is_float(const char *str) {
+    int has_dot = 0, has_exp = 0;
+    int seen_digit_before_exp = 0, seen_digit_after_exp = 0;
 
-        if (word == ":")
-        {
-            handleCompileMode(i, words, sourceCode);
+    // Handle optional leading sign
+    if (*str == '-' || *str == '+') {
+        str++;
+    }
+
+    while (*str) {
+        if (*str == '.') {
+            if (has_dot || has_exp) {
+                return 0; // Invalid: more than one dot or dot after exponent
+            }
+            has_dot = 1;
+        } else if (*str == 'e' || *str == 'E') {
+            if (has_exp || !seen_digit_before_exp) {
+                return 0; // Invalid: more than one exponent or no digits before exponent
+            }
+            has_exp = 1;
+        } else if (*str == '-' || *str == '+') {
+            if (*(str - 1) != 'e' && *(str - 1) != 'E') {
+                return 0; // Invalid: sign not immediately after exponent
+            }
+        } else if (isdigit(*str)) {
+            if (has_exp) {
+                seen_digit_after_exp = 1; // Keeping track of digits after 'e/E'
+            } else {
+                seen_digit_before_exp = 1; // Keeping track of digits before 'e/E'
+            }
+        } else {
+            return 0; // Invalid character
         }
-        else
-        {
-            interpreterProcessWord(word, i, words);
+        str++;
+    }
+    return (has_dot || has_exp) && seen_digit_before_exp && (!has_exp || seen_digit_after_exp);
+}
+
+Token get_next_token(const char **input) {
+    Token token = {TOKEN_UNKNOWN, {0}};
+    skip_whitespace(input);
+
+    if (**input == '\0') {
+        token.type = TOKEN_END;
+        return token;
+    }
+
+    int i = 0;
+    char temp[MAX_TOKEN_LENGTH] = {0};
+    while (**input && !isspace(**input) && i < MAX_TOKEN_LENGTH - 1) {
+        temp[i++] = *(*input)++;
+    }
+    temp[i] = '\0';
+
+    // Check for compilation/interpreting tokens
+    if (strcmp(temp, ":") == 0 || strcmp(temp, "]") == 0) {
+        token.type = TOKEN_COMPILING;
+    } else if (strcmp(temp, ";") == 0 || strcmp(temp, "[") == 0) {
+        token.type = TOKEN_INTERPRETING;
+    }
+    // Handle words ending in quotes
+    else if (temp[i - 1] == '"') {
+        temp[i] = '\0'; // Remove trailing " from word
+        token.type = TOKEN_WORD;
+        strncpy(token.value, temp, MAX_TOKEN_LENGTH - 1);
+        (*input)--; // Backtrack so the " starts a new string literal
+    }
+    // Detect floating numbers
+    else if (is_float(temp)) {
+        token.type = TOKEN_FLOAT;
+        token.float_value = atof(temp);
+    }
+    // Detect integer numbers
+    else if (is_number(temp)) {
+        token.type = TOKEN_NUMBER;
+        token.int_value = parseNumber(temp);
+    }
+    // Handle regular words
+    else {
+        token.type = TOKEN_WORD;
+        strncpy(token.value, temp, MAX_TOKEN_LENGTH - 1);
+    }
+    return token;
+}
+
+
+Token get_string_token(const char **input) {
+    Token token = {TOKEN_STRING, {0}};
+    (*input)++; // Consume opening "
+    if (**input == ' ') {
+        (*input)++; // Consume that one space
+    }
+    int i = 0;
+    while (**input && **input != '"' && i < MAX_TOKEN_LENGTH - 1) {
+        token.value[i++] = *(*input)++;
+    }
+    if (**input == '"') {
+        (*input)++; // Consume closing quote
+    }
+    token.value[i] = '\0';
+    return token;
+}
+
+inline int tokenize_forth(const char *input, Token tokens[MAX_TOKENS]) {
+    const char *cursor = input;
+    int token_count = 0;
+    Token token;
+
+    // reset all tokens
+    for (int i = 0; i < MAX_TOKENS; i++) {
+        tokens[i].type = TOKEN_END;
+        tokens[i].value[0] = '\0';
+        tokens[i].int_value = 0;
+        tokens[i].float_value = 0;
+    }
+
+    while ((token = get_next_token(&cursor)).type != TOKEN_END && token_count < MAX_TOKENS) {
+        if (token.type == TOKEN_WORD && *cursor == '"') {
+            tokens[token_count++] = token;
+            token = get_string_token(&cursor);
         }
-        ++i;
+        tokens[token_count++] = token;
+    }
+
+    tokens[token_count].type = TOKEN_END; // Mark end of tokens
+    return token_count;
+}
+
+ inline void handleCompilerTokenizedWord(int &index, Token (*tokens)[MAX_TOKENS]) {
+
+    // on entry we should have TOKEN_COMPILING at index
+    if ( (*tokens)[index].type != TOKEN_COMPILING) {
+        throw std::runtime_error("Compiler Error: invalid token: " + std::to_string((*tokens)[index].type));
+    }
+
+    // skip to new word name
+    index++;
+    std::string wordName = (*tokens)[index].value;
+    logging = jc.logging; // Use a single consistent logging variable
+    printf("\nCompiling word: [%s]\n", wordName.c_str());
+
+    // Prevent recompiling an existing word
+    if (d.findWord(wordName.c_str()) != nullptr) {
+        if (logging) printf("Compiler: word already exists: %s\n", wordName.c_str());
+        jc.resetContext();
+        throw std::runtime_error("Compiler Error: word already exists: " + wordName);
+    }
+
+    // Check if this word is being traced
+    bool wordLogging = (tracedWords.find(wordName) != tracedWords.end());
+    if (wordLogging) {
+        printf("\nCompiling word: [%s] with tracing enabled.\n", wordName.c_str());
+    }
+
+    // Get singleton JIT context and reset it for new word compilation
+    JitContext &jc = JitContext::getInstance();
+    jc.resetContext();
+
+    // Start compiling the new word
+    JitGenerator::genPrologue();
+
+    // Process tokens until end or exit condition (TOKEN_END or TOKEN_COMPILING)
+    index++;
+
+    while (index < MAX_TOKENS) {
+        auto &token = (*tokens)[index];
+        auto type = token.type;
+
+        if (type == TOKEN_COMPILING || type == TOKEN_END) {
+            break;
+        }
+
+        if (logging) {
+            printf("Processing token at index %d: [%s] (type=%d)\n", index, token.value, type);
+        }
+
+        switch (type) {
+            case TOKEN_WORD: {
+                std::string word = token.value;
+
+                if (logging) printf("Processing WORD: %s\n", word.c_str());
+
+                auto *fword = d.findWord(word.c_str());
+
+
+                if (fword) {
+                    // Handle word types based on functions defined within the word
+                    if (fword->generatorFunc) {
+                        if (logging) printf("Generating code for word: %s\n", word.c_str());
+                        exec(fword->generatorFunc);
+                    } else if (fword->compiledFunc) {
+                        if (logging) printf("Generating call for compiled function of word: %s\n", word.c_str());
+                        JitGenerator::genCall(fword->compiledFunc);
+                    } else if (fword->immediateFunc) {
+                        if (logging) printf("Running immediate function of word: %s\n", word.c_str());
+
+                        // Handle immediate functions
+                        jc.pos_next_word = index;
+                        jc.pos_last_word = 0;
+                        jc.next_token = (*(tokens))[index + 1];
+                        exec(fword->immediateFunc);
+
+                        // Handle modified index from immediate function
+                        if (jc.pos_last_word != 0) {
+                            index = jc.pos_last_word;
+                        }
+                    } else {
+                        if (logging) printf("Error: Unknown behavior for word: %s\n", word.c_str());
+                        jc.resetContext();
+                        throw std::runtime_error("Unknown word behavior: " + word);
+                    }
+                } else {
+                    // Handle case where word is a local variable
+                    int o = JitGenerator::findLocal(word);
+                    if (o != INVALID_OFFSET) {
+                        if (logging) printf("Local variable: %s at offset %d\n", word.c_str(), o);
+                        JitGenerator::genPushLocal(o);
+                    } else {
+                        if (logging) printf("Error: Unknown or uncompilable word: %s\n", word.c_str());
+                        jc.resetContext();
+                        throw std::runtime_error("Unknown word: " + word);
+                    }
+                }
+                break;
+            }
+            case TOKEN_NUMBER: {
+                uint64_t number = token.int_value;
+                jc.uint64_A = number;
+                JitGenerator::genPushLong();
+                if (logging) printf("Generated code for number: %d\n", token.int_value);
+                break;
+            }
+            case TOKEN_FLOAT: {
+                jc.double_A = token.float_value;
+                JitGenerator::genPushDouble();
+                if (logging) printf("Generated code for float: %f\n", token.float_value);
+                break;
+            }
+            case TOKEN_STRING:
+                // Assume strings have been handled by immediate functions
+                break;
+            case TOKEN_UNKNOWN: {
+                if (logging) printf("Processing UNKNOWN token.\n");
+                jc.resetContext();
+                throw std::runtime_error("Unknown token encountered: " + std::string(token.value));
+            }
+            case TOKEN_INTERPRETING:
+            case TOKEN_COMPILING:
+                // Nothing specific needed here, break out of loop if encountered
+                if (logging) printf("Unexpected COMPILING/INTERPRETING token: [%s]\n", token.value);
+                break;
+            default:
+                if (logging) printf("Unhandled token type: [%d]\n", type);
+                break;
+        }
+
+        // Increment index for the next token
+        index++;
+    }
+
+    // Finalize compiled word
+    JitGenerator::genEpilogue();
+    const ForthFunction f = JitGenerator::endGeneration();
+
+    d.addWord(wordName.c_str(), nullptr, f, nullptr, nullptr, "");
+
+    if (logging || wordLogging) {
+        printf("Compiler: Successfully compiled word: %s\n", wordName.c_str());
+        jc.reportMemoryUsage();
+    }
+}
+
+
+inline void interpreterProcessWordTokenized(const Token &token, int &index, Token (*tokens)[MAX_TOKENS]) {
+    ForthWord *fword = nullptr;
+
+    switch (token.type) {
+        case TOKEN_WORD:
+            // Handle word tokens, `value` is used for string/word storage
+            if (debug_enabled) printf("Processing WORD: %s\n", token.value);
+            fword = d.findWord(token.value);
+            if (fword) {
+                if (fword->compiledFunc) {
+                    if (debug_enabled) printf("Calling word: %s\n", token.value);
+                    exec(fword->compiledFunc);
+                } else if (fword->terpFunc) // immediate word
+                {
+                    if (debug_enabled) printf("Running interpreter immediate word: %s\n", token.value);
+                    jc.pos_next_word = index;
+                    jc.next_token = (*(tokens))[index + 1];
+                    exec(fword->terpFunc);
+                } else {
+                    if (debug_enabled)
+                        std::cout << "Error: Word [" << token.value <<
+                                "] found but cannot be executed.\n";
+                    d.displayWord(token.value);
+                    throw std::runtime_error("Cannot execute word");
+                }
+            } else {
+                if (debug_enabled)
+                    std::cout << "Error: Unknown or uncompilable word: [" << token.value << "]" <<
+                            std::endl;
+                throw std::runtime_error("Unknown word: " + std::string(token.value));
+            }
+            break;
+
+        case TOKEN_COMPILING:
+            printf("Processing COMPILING: %s\n", token.value);
+            handleCompilerTokenizedWord(index, tokens);
+
+
+        case TOKEN_NUMBER:
+            // Handle integers
+            //printf("Processing NUMBER: %d\n", token.int_value);
+            // Perform actions with the integer value
+            sm.pushDS(token.int_value);
+            break;
+
+        case TOKEN_FLOAT:
+            // Handle floating-point numbers
+            //printf("Processing FLOAT: %f\n", token.float_value);
+            sm.pushDSDouble(token.float_value);
+            break;
+
+        case TOKEN_STRING:
+            // Handle string literal tokens
+            if (debug_enabled) printf("Processing STRING: \"%s\"\n", token.value);
+
+            break;
+
+        case TOKEN_UNKNOWN:
+            // Handle unknown tokens if necessary
+            if (debug_enabled) printf("Processing UNKNOWN token.\n");
+            if (logging) std::cout << "Error: Unknown or uncompilable word: [" << token.value << "]" << std::endl;
+            throw std::runtime_error("Unknown word: " + std::string(token.value));
+            break;
+
+        case TOKEN_END:
+            // Encounter end of tokens; typically no action needed here
+            if (debug_enabled) printf("End of tokens.\n");
+            break;
+
+        default:
+            if (debug_enabled) printf("Invalid token type encountered.\n");
+            break;
+    }
+}
+
+
+inline void interpreter(const std::string &sourceCode) {
+    int count = tokenize_forth(sourceCode.c_str(), tokens);
+    // print_token_list(tokens, count);
+    int i = 0;
+    while (i < count) {
+        // Pass the token, index, and full token array to the processing function
+        interpreterProcessWordTokenized(tokens[i], i, &tokens);
+        i++;
     }
 }
 
@@ -229,17 +570,14 @@ inline bool startup_loaded = false;
 
 // Function to interpret multiple statements and functions in the given text
 // use when loading forth from a file etc.
-inline void interpretText(const std::string& text)
-{
+inline void interpretText(const std::string &text) {
     std::istringstream stream(text);
     std::string line;
     std::string accumulated_input;
     bool compiling = false;
 
-    while (std::getline(stream, line))
-    {
-        if (line.empty())
-        {
+    while (std::getline(stream, line)) {
+        if (line.empty()) {
             continue;
         }
 
@@ -247,34 +585,28 @@ inline void interpretText(const std::string& text)
 
         auto words = split(line);
 
-        for (auto it = words.begin(); it != words.end(); ++it)
-        {
-            const auto& word = *it;
+        for (auto it = words.begin(); it != words.end(); ++it) {
+            const auto &word = *it;
 
-            if (word == ":")
-            {
+            if (word == ":") {
                 compiling = true;
-            }
-            else if (word == ";")
-            {
+            } else if (word == ";") {
                 compiling = false;
-               // printf("Interpret text : [%s]\n", accumulated_input.c_str());
+                // printf("Interpret text : [%s]\n", accumulated_input.c_str());
                 interpreter(accumulated_input);
                 accumulated_input.clear();
                 break;
             }
         }
 
-        if (!compiling)
-        {
+        if (!compiling) {
             interpreter(accumulated_input);
             accumulated_input.clear();
         }
     }
 
     // Ensure remaining accumulated input is processed after the loop
-    if (!accumulated_input.empty())
-    {
+    if (!accumulated_input.empty()) {
         interpreter(accumulated_input);
         accumulated_input.clear();
     }
@@ -282,21 +614,17 @@ inline void interpretText(const std::string& text)
 
 
 // Function to load and interpret the start.f file
-inline void slurpIn(const std::string& file_name = "./start.f")
-{
+inline void slurpIn(const std::string &file_name = "./start.f") {
     if (startup_loaded) return;
     startup_loaded = true;
 
-    if (std::ifstream file(file_name); !file.is_open())
-    {
+    if (std::ifstream file(file_name); !file.is_open()) {
         throw std::runtime_error("Could not open start.f file.");
     }
 
-    try
-    {
+    try {
         std::ifstream file(file_name);
-        if (!file.is_open())
-        {
+        if (!file.is_open()) {
             throw std::runtime_error("Could not open file.");
         }
 
@@ -309,51 +637,34 @@ inline void slurpIn(const std::string& file_name = "./start.f")
         file.close();
 
         interpretText(fileContent);
-    }
-
-    catch (const std::exception& e)
-    {
+    } catch (const std::exception &e) {
         std::cerr << "Runtime error: " << e.what() << std::endl;
         // Reset context and stack as required
     }
 }
 
-inline std::string handleSpecialCommands(const std::string& input)
-{
+inline std::string handleSpecialCommands(const std::string &input) {
     bool handled = false;
 
-    if (input == "*MEM" || input == "*mem")
-    {
+    if (input == "*MEM" || input == "*mem") {
         jc.reportMemoryUsage();
         handled = true;
-    }
-    else if (input == "*TESTS" || input == "*tests")
-    {
+    } else if (input == "*TESTS" || input == "*tests") {
         run_basic_tests();
         handled = true;
-    }
-    else if (input == "*STRINGS" || input == "*strings")
-    {
-
+    } else if (input == "*STRINGS" || input == "*strings") {
         handled = true;
-    }
-    else if (input == "*QUIT" || input == "*quit")
-    {
+    } else if (input == "*QUIT" || input == "*quit") {
         exit(0);
-    }
-    else if (input == "*LOGGINGON" || input == "*loggingon")
-    {
+    } else if (input == "*LOGGINGON" || input == "*loggingon") {
         jc.loggingON();
         handled = true;
-    }
-    else if (input == "*LOGGINGOFF" || input == "*loggingoff")
-    {
+    } else if (input == "*LOGGINGOFF" || input == "*loggingoff") {
         jc.loggingOFF();
         handled = true;
     }
 
-    if (handled)
-    {
+    if (handled) {
         // Remove the handled command from the input
         return "";
     }
@@ -361,31 +672,23 @@ inline std::string handleSpecialCommands(const std::string& input)
     return input;
 }
 
-inline bool processTraceCommands(auto& it, const auto& words, std::string& accumulated_input)
-{
-    const auto& word = *it;
-    if (word == "*TRON" || word == "*tron" || word == "*TROFF" || word == "*troff")
-    {
+inline bool processTraceCommands(auto &it, const auto &words, std::string &accumulated_input) {
+    const auto &word = *it;
+    if (word == "*TRON" || word == "*tron" || word == "*TROFF" || word == "*troff") {
         auto command = word;
         ++it; // Advance the iterator
-        if (it != words.end())
-        {
-            const auto& nextWord = *it;
-            if (command == "*TRON" || command == "*tron")
-            {
+        if (it != words.end()) {
+            const auto &nextWord = *it;
+            if (command == "*TRON" || command == "*tron") {
                 if (!nextWord.empty())
                     traceOn(nextWord);
-            }
-            else if (command == "*TROFF" || command == "*troff")
-            {
+            } else if (command == "*TROFF" || command == "*troff") {
                 if (!nextWord.empty())
                     traceOff(nextWord);
             }
             // Remove `command` and `nextWord` from accumulated_input
             accumulated_input.erase(accumulated_input.find(command), command.length() + nextWord.length() + 2);
-        }
-        else
-        {
+        } else {
             std::cerr << "Error: Expected name of word to trace after " << command << std::endl;
         }
         return true; // Processed trace command
@@ -393,30 +696,22 @@ inline bool processTraceCommands(auto& it, const auto& words, std::string& accum
     return false; // Not a trace command
 }
 
-inline bool processLoopCheckCommands(auto& it, const auto& words, std::string& accumulated_input)
-{
-    const auto& word = *it;
-    if (word == "*LOOPCHECK" || word == "*loopcheck")
-    {
+inline bool processLoopCheckCommands(auto &it, const auto &words, std::string &accumulated_input) {
+    const auto &word = *it;
+    if (word == "*LOOPCHECK" || word == "*loopcheck") {
         // get next word
         ++it;
-        if (it != words.end())
-        {
-            const auto& nextWord = *it;
-            if (nextWord == "ON" || nextWord == "on")
-            {
+        if (it != words.end()) {
+            const auto &nextWord = *it;
+            if (nextWord == "ON" || nextWord == "on") {
                 // display loop checking on
                 std::cout << "Loop checking ON" << std::endl;
                 jc.loopCheckON();
-            }
-            else if (nextWord == "OFF" || nextWord == "off")
-            {
+            } else if (nextWord == "OFF" || nextWord == "off") {
                 // display loop checking off
                 std::cout << "Loop checking OFF" << std::endl;
                 jc.loopCheckOFF();
-            }
-            else
-            {
+            } else {
                 std::cerr << "Error: Expected argument (on,off) after " << word << std::endl;
             }
             // Remove `command` and `nextWord` from accumulated_input
@@ -427,30 +722,22 @@ inline bool processLoopCheckCommands(auto& it, const auto& words, std::string& a
     return false; // Not a loop check command
 }
 
-inline bool processLoggingCommands(auto& it, const auto& words, std::string& accumulated_input)
-{
-    const auto& word = *it;
-    if (word == "*LOGGING" || word == "*logging")
-    {
+inline bool processLoggingCommands(auto &it, const auto &words, std::string &accumulated_input) {
+    const auto &word = *it;
+    if (word == "*LOGGING" || word == "*logging") {
         // get next word
         ++it;
-        if (it != words.end())
-        {
-            const auto& nextWord = *it;
-            if (nextWord == "ON" || nextWord == "on")
-            {
+        if (it != words.end()) {
+            const auto &nextWord = *it;
+            if (nextWord == "ON" || nextWord == "on") {
                 // display loop checking on
                 std::cout << "logging ON" << std::endl;
                 jc.loggingON();
-            }
-            else if (nextWord == "OFF" || nextWord == "off")
-            {
+            } else if (nextWord == "OFF" || nextWord == "off") {
                 // display loop checking off
                 std::cout << "logging OFF" << std::endl;
                 jc.loggingOFF();
-            }
-            else
-            {
+            } else {
                 std::cerr << "Error: Expected argument (on,off) after " << word << std::endl;
             }
             // Remove `command` and `nextWord` from accumulated_input
@@ -462,48 +749,35 @@ inline bool processLoggingCommands(auto& it, const auto& words, std::string& acc
 }
 
 
-
-inline bool processDumpCommands(auto& it, const auto& words, std::string& accumulated_input)
-{
-    const auto& word = *it;
-    if (word == "*dump" || word == "*DUMP")
-    {
+inline bool processDumpCommands(auto &it, const auto &words, std::string &accumulated_input) {
+    const auto &word = *it;
+    if (word == "*dump" || word == "*DUMP") {
         // Get the next word
         ++it;
-        if (it != words.end())
-        {
-            const auto& addrStr = *it;
+        if (it != words.end()) {
+            const auto &addrStr = *it;
             uintptr_t address;
 
-            try
-            {
-                if (addrStr.find("0x") != std::string::npos || addrStr.find("0X") != std::string::npos)
-                {
+            try {
+                if (addrStr.find("0x") != std::string::npos || addrStr.find("0X") != std::string::npos) {
                     // Address is in hexadecimal
                     address = std::stoull(addrStr, nullptr, 16);
-                }
-                else
-                {
+                } else {
                     // Address is in decimal
                     address = std::stoull(addrStr, nullptr, 10);
                 }
 
                 // Cast the address to a void pointer and call dump
-                dump(reinterpret_cast<void*>(address));
-            }
-            catch (const std::invalid_argument& e)
-            {
+                dump(reinterpret_cast<void *>(address));
+            } catch (const std::invalid_argument &e) {
                 std::cerr << "Error: Invalid address format" << std::endl;
-            } catch (const std::out_of_range& e)
-            {
+            } catch (const std::out_of_range &e) {
                 std::cerr << "Error: Address out of range" << std::endl;
             }
 
             // Remove `command` and `nextWord` from accumulated_input
             accumulated_input.erase(accumulated_input.find(word), word.length() + addrStr.length() + 2);
-        }
-        else
-        {
+        } else {
             std::cerr << "Error: Expected address after " << word << std::endl;
         }
         return true; // Processed dump command
@@ -511,34 +785,30 @@ inline bool processDumpCommands(auto& it, const auto& words, std::string& accumu
     return false; // Not a dump command
 }
 
-inline void interactive_terminal()
-{
+inline void interactive_terminal() {
     struct termios orig_termios;
     enable_raw_mode(&orig_termios);
     std::string input;
     std::string accumulated_input;
     bool compiling = false;
 
-    slurpIn("./start.f");
+    //slurpIn("./start.f");
 
     // The infinite terminal loop
-    while (true)
-    {
+    while (true) {
         std::cout << (compiling ? "] " : "> ");
         std::cout.flush();
         custom_getline(std::cin, input); // Read a line of input from the terminal
 
 
-        if (input == "QUIT" || input == "quit")
-        {
+        if (input == "QUIT" || input == "quit") {
             sm.resetDS();
             break; // Exit the loop if the user enters QUIT
         }
 
         input = handleSpecialCommands(input);
 
-        if (input.empty())
-        {
+        if (input.empty()) {
             continue;
         }
 
@@ -547,41 +817,32 @@ inline void interactive_terminal()
         auto words = split(input);
 
         // Check if compiling is required based on the input
-        for (auto it = words.begin(); it != words.end(); ++it)
-        {
-            const auto& word = *it;
+        for (auto it = words.begin(); it != words.end(); ++it) {
+            const auto &word = *it;
 
-            if (word == "QUIT" || word == "quit")
-            {
+            if (word == "QUIT" || word == "quit") {
                 break;
             }
 
-            if (processLoggingCommands(it, words, accumulated_input))
-            {
+            if (processLoggingCommands(it, words, accumulated_input)) {
                 continue;
             }
 
-            if (processTraceCommands(it, words, accumulated_input))
-            {
+            if (processTraceCommands(it, words, accumulated_input)) {
                 continue;
             }
 
-            if (processLoopCheckCommands(it, words, accumulated_input))
-            {
+            if (processLoopCheckCommands(it, words, accumulated_input)) {
                 continue;
             }
 
-            if (processDumpCommands(it, words, accumulated_input))
-            {
+            if (processDumpCommands(it, words, accumulated_input)) {
                 continue;
             }
 
-            if (word == ":")
-            {
+            if (word == ":") {
                 compiling = true;
-            }
-            else if (word == ";")
-            {
+            } else if (word == ";") {
                 compiling = false;
                 interpreter(accumulated_input);
                 accumulated_input.clear();
@@ -589,8 +850,7 @@ inline void interactive_terminal()
             }
         }
 
-        if (!compiling)
-        {
+        if (!compiling) {
             interpreter(accumulated_input); // Process the accumulated input using the outer_interpreter
             accumulated_input.clear();
             std::cout << " Ok" << std::endl;

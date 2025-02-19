@@ -1,6 +1,5 @@
 #ifndef COMPILER_H
 #define COMPILER_H
-#include <sstream>
 #include <string>
 #include "ForthDictionary.h"
 #include <unordered_set>

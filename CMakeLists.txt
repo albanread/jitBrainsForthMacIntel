@@ -25,8 +25,9 @@ add_executable(jitBrainsForth
         Compiler.h
         CompilerUtility.h
         jitLabels.h
-
+        StringStorage.h
         tests.h
+        StringStorage.h
 )
 
 # Copy start.f to the build directory
