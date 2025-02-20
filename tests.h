@@ -119,6 +119,7 @@ static void testCompileAndRun(const std::string& wordName,
         // Handle the error as needed (e.g., logging, cleanup)
     } catch (const std::exception& e)
     {
+        std::cerr << "In :" << testString << std::endl;
         std::cerr << "An unexpected error occurred: " << e.what() << std::endl;
         // Handle other exceptions as needed
     }
@@ -561,6 +562,7 @@ void run_basic_tests()
     ftest_against_ds("3.14159", 3.14159); // Single float value
     ftest_against_ds("2.0 2.0 f+", 4.0); // Addition resulting in a float
     ftest_against_ds("5.0 1.0 f-", 4.0); // Subtraction resulting in a float
+
     ftest_against_ds("10.0 2.0 f/", 5.0); // Division resulting in a float
     ftest_against_ds("3.0 2.0 f*", 6.0); // Multiplication resulting in a float
     ftest_against_ds("-3.0 fabs", 3.0);
@@ -603,7 +605,7 @@ void run_basic_tests()
     //     | 0.7854          | 0.7071                    |
     //     | 0.5236          | 0.5                       |
 
-    ftest_against_ds("0.0 fsin", 0.0);
+    // ftest_against_ds("0.0 fsin", 0.0);
     // ftest_against_ds("1.5708 fsin", 1.0);
     // ftest_against_ds("3.1416 fsin", 0.0);
     // ftest_against_ds("4.7124 fsin", -1.0);

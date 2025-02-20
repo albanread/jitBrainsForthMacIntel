@@ -600,7 +600,6 @@ public:
     // The TO word safely updates the container word
     // in interpret mode only.
     static void execTO() {
-
         size_t pos = jc.pos_next_word + 1;
         if (tokens[pos].type != TOKEN_WORD) {
             throw std::runtime_error("VARIABLE: Expected word token");
@@ -691,17 +690,19 @@ public:
 
     static void genTerpImmediateChar() {
         size_t pos = jc.pos_next_word + 1;
+
         if (tokens[pos].type != TOKEN_WORD) {
             throw std::runtime_error("VARIABLE: Expected word token");
         }
 
         std::string word = tokens[pos].value;
         jc.word = word;
+        jc.pos_last_word = pos;
+
         // Extract the first character from the word
         char charValue = word.front();
         auto initialValue = static_cast<uint64_t>(charValue);
         sm.pushDS(initialValue);
-        jc.pos_last_word = pos;
     }
 
     // 100 ARRAY test
@@ -813,7 +814,6 @@ public:
     // immediate value, runs when value is called.
     // 10.0 FVALUE fred
     static void genImmediateFvalue() {
-
         size_t pos = jc.pos_next_word + 1;
         if (tokens[pos].type != TOKEN_WORD) {
             throw std::runtime_error("VARIABLE: Expected word token");
@@ -851,7 +851,6 @@ public:
     // immediate value, runs when value is called.
     // 10 VALUE fred
     static void genImmediateConstant() {
-
         size_t pos = jc.pos_next_word + 1;
         if (tokens[pos].type != TOKEN_WORD) {
             throw std::runtime_error("VARIABLE: Expected word token");
@@ -885,7 +884,6 @@ public:
 
 
     static void genImmediatefConstant() {
-
         size_t pos = jc.pos_next_word + 1;
 
         if (tokens[pos].type != TOKEN_WORD) {
@@ -933,7 +931,6 @@ public:
     // immediate value, runs when value is called.
     // s" literal string" VALUE fred
     static void genImmediateStringValue() {
-
         size_t pos = jc.pos_next_word + 1;
         if (tokens[pos].type != TOKEN_WORD) {
             throw std::runtime_error("VARIABLE: Expected word token");
@@ -949,7 +946,6 @@ public:
 
 
     static void genImmediateVariable() {
-
         size_t pos = jc.pos_next_word + 1;
 
         if (tokens[pos].type != TOKEN_WORD) {
@@ -2239,46 +2235,87 @@ public:
     //
 
     // case of endof endcase Implementation
+    // ------------------------------------------------------
+    //  Implementation of CASE/OF/ENDOF/DEFAULT/ENDCASE
+    // ------------------------------------------------------
 
     static void genCase() {
+        // Validate that the assembler is initialized
+        assert(jc.assembler && "Assembler should be valid and initialized here");
         if (!jc.assembler) {
             throw std::runtime_error("genCase: Assembler not initialized");
         }
         auto &a = *jc.assembler;
 
+        // Create a new CaseLabel and ensure explicit initialization
         CaseLabel branches;
         branches.end_case_label = a.newLabel();
+        branches.endOfLabels.clear();
+        constexpr int UNINITIALIZED_OF_COUNT = -1;
+        branches.ofCount = UNINITIALIZED_OF_COUNT;
 
-        branches.ofCount = -1;
+        // Push new CaseLabel to the loop stack
         loopStack.push({LoopType::CASE_CONTROL, branches});
 
+        // Optional: Validate stack depth
+        constexpr int MaxLoopStackDepth = 1024;
+        if (loopStack.size() > MaxLoopStackDepth) {
+            throw std::runtime_error("genCase: loopStack exceeded maximum depth!");
+        }
+
+        // Pop data stack value into the register and push it to return stack
         asmjit::x86::Gp value = asmjit::x86::rax;
         popDS(value);
         pushRS(value);
 
-        a.comment(" ; ---- genCase");
+        a.comment(" ; ---- genCase - CASE control structure start");
     }
 
     static void genOf() {
+        assert(jc.assembler && "Assembler should be valid and initialized here");
         if (!jc.assembler) {
             throw std::runtime_error("genOf: Assembler not initialized");
         }
         auto &a = *jc.assembler;
 
+        // Ensure the loopStack is not empty and the top type is CASE_CONTROL
         if (!loopStack.empty() && loopStack.top().type == LoopType::CASE_CONTROL) {
+            // Work directly with the top of the stack
             auto &branches = std::get<CaseLabel>(loopStack.top().label);
 
             a.comment(" ; ---- genOf");
 
-            // Create a new endOfLabel for this specific `OF`
             asmjit::Label endOfLabel = a.newLabel();
-            branches.ofCount = branches.ofCount + 1; // work on next branches label
+
+            // Debug: current state (not mandatory for production)
+            std::cout << "genOf: Before addition: ofCount = " << branches.ofCount
+                    << ", endOfLabels.size() = " << branches.endOfLabels.size() << std::endl;
+
+            // *** CHANGED ***
+            // Instead of the old “if (branches.ofCount + 1 != endOfLabels.size()) throw ...”
+            // we do a simpler check after we push:
+            branches.ofCount += 1;
             branches.endOfLabels.push_back(endOfLabel);
-            // Save modifications back to the stack
-            loopStack.pop();
-            loopStack.push({LoopType::CASE_CONTROL, branches});
+
+            // Quick consistency check (optional)
+            if (branches.ofCount != static_cast<int>(branches.endOfLabels.size()) - 1) {
+                throw std::runtime_error(
+                    "genOf: Inconsistent state after pushing new endOfLabel"
+                );
+            }
+
+            // *** CHANGED ***
+            // No more: loopStack.pop(); loopStack.push({LoopType::CASE_CONTROL, branches});
+            // Instead, just reassign if needed:
+            loopStack.top().label = branches; // keep the top updated
+
+            // Debug: updated state
+            std::cout << "genOf: After addition: ofCount = " << branches.ofCount
+                    << ", endOfLabels.size() = " << branches.endOfLabels.size() << std::endl;
 
             a.comment(" ; compare and jump to endof if false");
+
+            // Validate and use Gp registers
             asmjit::x86::Gp value = asmjit::x86::rax;
             popRS(value);
             pushRS(value);
@@ -2287,11 +2324,17 @@ public:
             popDS(tos);
 
             a.cmp(tos, value);
-            a.jnz(branches.endOfLabels.at(branches.ofCount)); // Jump to OUR endOfLabel if comparison fails
+
+            // We now jump to the newly pushed label if comparison fails
+            a.jnz(branches.endOfLabels.at(branches.ofCount));
         } else {
-            throw std::runtime_error("genOf: No matching CASE_CONTROL structure on the stack");
+            auto stackDepth = loopStack.size();
+            throw std::runtime_error(
+                "genOf: No matching CASE_CONTROL structure on the stack (stack size: " +
+                std::to_string(stackDepth) + ")");
         }
     }
+
 
     static void genEndOf() {
         if (!jc.assembler) {
@@ -2301,68 +2344,99 @@ public:
         a.comment(" ; ---- genEndOf");
 
         if (!loopStack.empty() && loopStack.top().type == LoopType::CASE_CONTROL) {
-            auto branches = std::get<CaseLabel>(loopStack.top().label);
+            auto &branches = std::get<CaseLabel>(loopStack.top().label);
+
             a.comment("; jump to endcase");
-            // Jump to the end of the case block (final label) after completing the block
             a.jmp(branches.end_case_label);
 
-            // after the jump to endcase.
-            // Bind the endOfLabel for this OF block
+            // Bind the label for this OF block
             if (!branches.endOfLabels.empty()) {
+                // *** CHANGED ***
+                // We do NOT decrement ofCount here. We simply bind the label we last created.
+                // So if ofCount=0 after the first OF, we stay at 0 here.
+                if (branches.ofCount < 0 ||
+                    branches.ofCount >= static_cast<int>(branches.endOfLabels.size())) {
+                    throw std::runtime_error(
+                        "genEndOf: Attempting to bind out-of-bounds endOfLabels (ofCount = " +
+                        std::to_string(branches.ofCount) + ", size = " +
+                        std::to_string(branches.endOfLabels.size()) + ")");
+                }
+
                 a.comment("; -- Label for endof ");
                 a.bind(branches.endOfLabels.at(branches.ofCount));
-                printf("bind success, of label %d", branches.ofCount);
+                printf("bind success, of label %d\n", branches.ofCount);
+
+                // *** CHANGED ***
+                // Removed: branches.ofCount -= 1;
+
+                std::cout << "genEndOf: Bound endOfLabels[" << branches.ofCount
+                        << "], leaving ofCount=" << branches.ofCount << std::endl;
+            } else {
+                throw std::runtime_error("genEndOf: endOfLabels vector is empty");
             }
         } else {
             throw std::runtime_error("genEndOf: No matching CASE_CONTROL structure on the stack");
         }
     }
 
+
     static void genDefault() {
+        assert(jc.assembler && "Assembler should be valid and initialized here");
         if (!jc.assembler) {
             throw std::runtime_error("genDefault: Assembler not initialized");
         }
         auto &a = *jc.assembler;
 
+        a.comment(" ; ---- genDefault");
+
         if (!loopStack.empty() && loopStack.top().type == LoopType::CASE_CONTROL) {
-            auto branches = std::get<CaseLabel>(loopStack.top().label);
+            auto &branches = std::get<CaseLabel>(loopStack.top().label);
 
-            a.comment(" ; ---- genDefault");
-
-
-            // Save modifications back to the stack
-            loopStack.pop();
-            loopStack.push({LoopType::CASE_CONTROL, branches});
+            // If you need to specifically bind a "default label" or jump logic, do it here.
+            // Currently, we just put a comment.
+            a.comment(" ; ---- Default logic (no label bound by default in this design)");
         } else {
-            throw std::runtime_error("genDefault: No matching CASE_CONTROL structure on the stack");
+            int stackDepth = loopStack.size();
+            throw std::runtime_error(
+                "genDefault: No matching CASE_CONTROL structure on the stack (stack size: " +
+                std::to_string(stackDepth) + ")");
         }
     }
 
+
     static void genEndCase() {
+        assert(jc.assembler && "Assembler should be valid and initialized here");
         if (!jc.assembler) {
             throw std::runtime_error("genEndCase: Assembler not initialized");
         }
         auto &a = *jc.assembler;
 
+        a.comment(" ; ---- genEndCase");
+
         if (!loopStack.empty() && loopStack.top().type == LoopType::CASE_CONTROL) {
-            auto branches = std::get<CaseLabel>(loopStack.top().label);
+            auto &branches = std::get<CaseLabel>(loopStack.top().label);
 
-            a.comment(" ; ---- genEndCase");
-
-            // Final bind at the exit point of the case block
+            // Bind the final label to converge all paths
             a.bind(branches.end_case_label);
+            std::cout << "genEndCase: Successfully bound end_case_label." << std::endl;
 
-            // Clear the loop stack
+            // Pop from the loopStack
             loopStack.pop();
-            // drop case comparison from return stack.
-            a.comment(" ; ----  drop case comparison from return stack.");
+            std::cout << "genEndCase: CASE_CONTROL structure removed from loopStack." << std::endl;
+
+            // Drop the case comparison value from the return stack
+            a.comment(" ; ---- Drop case comparison from return stack.");
             asmjit::x86::Gp value = asmjit::x86::rax;
+            std::cout << "genEndCase: Popping return stack for case comparison." << std::endl;
             popRS(value);
+            std::cout << "genEndCase: Successfully popped value from return stack." << std::endl;
         } else {
-            throw std::runtime_error("genEndCase: No matching CASE_CONTROL structure on the stack");
+            int stackDepth = loopStack.size();
+            throw std::runtime_error(
+                "genEndCase: No matching CASE_CONTROL structure on the stack (stack size: " +
+                std::to_string(stackDepth) + ")");
         }
     }
-
 
     // end of case statements
 
@@ -3363,7 +3437,6 @@ operation();                           \
     GEN_INC_DEC_FN(gen16Dec, genSubLong, 16)
 
     static void genMulBy10() {
-
         auto &a = *jc.assembler;
         asmjit::x86::Gp ds = asmjit::x86::r15; // Stack pointer register
         asmjit::x86::Gp tempValue = asmjit::x86::rax; // Temporary register for value
@@ -3437,49 +3510,6 @@ shiftAction(shiftAmount);                    \
     GEN_SHIFT_FN(gen2Div, genRightShift, 1)
     GEN_SHIFT_FN(gen4Div, genRightShift, 2)
     GEN_SHIFT_FN(gen8Div, genRightShift, 3)
-
-
-    //  abort e.g. IF ABORT" error" THEN
-    //  neither throw nor longjmp work yet
-
-    // abort with error message
-    // static void genImmediateAbortQuote()
-    // {
-    //     const auto& words = *jc.words;
-    //     size_t pos = jc.pos_next_word + 1;
-    //     std::string word = words[pos];
-    //     jc.word = word;
-    //     if (logging)
-    //         printf("genImmediateAbortQuote: %s\n", word.c_str());
-    //
-    //     const auto index = stripIndex(word);
-    //     strIntern.incrementRef(index);
-    //     auto address = strIntern.getStringAddress(index);
-    //
-    //     if (!jc.assembler)
-    //     {
-    //         throw std::runtime_error("genImmediateAbortQuote: Assembler not initialized");
-    //     }
-    //
-    //
-    //     auto& a = *jc.assembler;
-    //     commentWithWord(" ; ----- ABORT\" displaying text exiting  ");
-    //
-    //     // Display the string
-    //     a.mov(asmjit::x86::rcx, address); // put parameter in argument
-    //     a.sub(asmjit::x86::rsp, 8); // Allocate space for the shadow space
-    //     a.call(prints); // call puts
-    //      a.add(asmjit::x86::rsp, 8); // restore shadow space
-    //
-    //     // Generate the jump to the function exit label
-    //     a.mov(asmjit::x86::rax, callLongjmp);
-    //     a.sub(asmjit::x86::rsp, 8); // Allocate space for the shadow space
-    //     a.call(asmjit::x86::rax);
-    //      // never gets here
-    //
-    //     jc.pos_last_word = pos;
-    // }
-
 
     // floating point support
 
@@ -3914,17 +3944,91 @@ shiftAction(shiftAmount);                    \
     // while interpreting, just display the strings from the input token stream.
     static void doDotQuote() {
         jc.pos_next_word++;
-        if (Token t = tokens[jc.pos_next_word]; t.type==TOKEN_STRING) {
+        if (Token t = tokens[jc.pos_next_word]; t.type == TOKEN_STRING) {
             putchars(t.value);
         }
+
     }
 
+    // s"
     static void doSQuote() {
-        putchars(jc.next_token.value);
-        print_token_list(tokens);
+
+        size_t pos = jc.pos_next_word + 1;
+        if (tokens[pos].type != TOKEN_STRING) {
+            throw std::runtime_error("s.: Expected string token");
+        }
+        GlobalStringManager& gsm = GlobalStringManager::instance();
+        GlobalString gs = gsm.create(jc.next_token.value);
+        const char* internedPtr = gs.c_str();
+        sm.pushDS(reinterpret_cast<u_int64_t>(internedPtr));
+        jc.pos_last_word = pos;
     }
 
 
+
+
+    // supports ."
+    static void genImmediateDotQuote()
+    {
+        if (!jc.assembler)
+        {
+            throw std::runtime_error("entryFunction: Assembler not initialized");
+        }
+        size_t pos = jc.pos_next_word + 1;
+        if (tokens[pos].type != TOKEN_STRING) {
+            throw std::runtime_error("s.: Expected string token");
+        }
+        std::string text = tokens[pos].value;
+        GlobalStringManager& gsm = GlobalStringManager::instance();
+        GlobalString gs = gsm.create(text);
+        const char* internedPtr = gs.c_str();
+        auto& a = *jc.assembler;
+        a.push(asmjit::x86::rdi);
+        a.mov(asmjit::x86::rdi, asmjit::imm(internedPtr));
+        a.call(prints);
+        a.pop(asmjit::x86::rdi);
+        jc.pos_last_word = pos;
+    }
+
+    // support s" for compiler code generation
+    static void genImmediateSQuote()
+    {
+        if (!jc.assembler)
+        {
+            throw std::runtime_error("entryFunction: Assembler not initialized");
+        }
+        size_t pos = jc.pos_next_word + 1;
+        if (tokens[pos].type != TOKEN_STRING) {
+            throw std::runtime_error("s.: Expected string token");
+        }
+        std::string text = tokens[pos].value;
+        GlobalStringManager& gsm = GlobalStringManager::instance();
+        GlobalString gs = gsm.create(text);
+        const char* internedPtr = gs.c_str();
+        auto& a = *jc.assembler;
+        a.mov(asmjit::x86::rdi, asmjit::imm(internedPtr));
+        pushDS(asmjit::x86::rdi);
+        jc.pos_last_word = pos;
+    }
+
+    // supports sprint
+    static void genPrint()
+    {
+        if (!jc.assembler)
+        {
+            throw std::runtime_error("entryFunction: Assembler not initialized");
+        }
+
+        auto& a = *jc.assembler;
+        a.comment(" ; ----- gen Print s. ");
+        // get string address from stack
+        asmjit::x86::Gp strAddr = asmjit::x86::rax;
+        popDS(strAddr);
+        a.push(asmjit::x86::rdi);
+        a.mov(asmjit::x86::rdi, strAddr);
+        a.call(prints);
+        a.pop(asmjit::x86::rdi);
+    }
 
 
 

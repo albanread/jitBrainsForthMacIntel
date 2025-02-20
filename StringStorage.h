@@ -104,6 +104,16 @@ public:
         return GlobalString(storage);
     }
 
+
+    // List all interned strings.
+    void listStrings() const {
+
+        for (const auto& entry : interned_) {
+            std::cout << "Key: " << entry.first
+                      << ", Value: " << entry.second << "\n";
+        }
+    }
+
 private:
     GlobalStringManager() = default;
     ~GlobalStringManager() = default;

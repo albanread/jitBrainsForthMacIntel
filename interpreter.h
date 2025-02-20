@@ -334,10 +334,14 @@ inline int tokenize_forth(const char *input, Token tokens[MAX_TOKENS]) {
 
  inline void handleCompilerTokenizedWord(int &index, Token (*tokens)[MAX_TOKENS]) {
 
+
     // on entry we should have TOKEN_COMPILING at index
     if ( (*tokens)[index].type != TOKEN_COMPILING) {
         throw std::runtime_error("Compiler Error: invalid token: " + std::to_string((*tokens)[index].type));
     }
+
+    TransientStringManager& tsm = TransientStringManager::instance();
+    tsm.beginFunction();
 
     // skip to new word name
     index++;
@@ -364,6 +368,8 @@ inline int tokenize_forth(const char *input, Token tokens[MAX_TOKENS]) {
 
     // Start compiling the new word
     JitGenerator::genPrologue();
+
+
 
     // Process tokens until end or exit condition (TOKEN_END or TOKEN_COMPILING)
     index++;
@@ -474,6 +480,8 @@ inline int tokenize_forth(const char *input, Token tokens[MAX_TOKENS]) {
         printf("Compiler: Successfully compiled word: %s\n", wordName.c_str());
         jc.reportMemoryUsage();
     }
+
+    tsm.endFunction();
 }
 
 
@@ -494,7 +502,9 @@ inline void interpreterProcessWordTokenized(const Token &token, int &index, Toke
                     if (debug_enabled) printf("Running interpreter immediate word: %s\n", token.value);
                     jc.pos_next_word = index;
                     jc.next_token = (*(tokens))[index + 1];
+                    if (debug_enabled) printf("Next token: [%s]\n", (*(tokens))[index + 1].value);
                     exec(fword->terpFunc);
+                    index = jc.pos_last_word;
                 } else {
                     if (debug_enabled)
                         std::cout << "Error: Word [" << token.value <<
@@ -556,12 +566,15 @@ inline void interpreterProcessWordTokenized(const Token &token, int &index, Toke
 inline void interpreter(const std::string &sourceCode) {
     int count = tokenize_forth(sourceCode.c_str(), tokens);
     // print_token_list(tokens, count);
+
+
     int i = 0;
     while (i < count) {
         // Pass the token, index, and full token array to the processing function
         interpreterProcessWordTokenized(tokens[i], i, &tokens);
         i++;
     }
+
 }
 
 
@@ -653,6 +666,16 @@ inline std::string handleSpecialCommands(const std::string &input) {
         run_basic_tests();
         handled = true;
     } else if (input == "*STRINGS" || input == "*strings") {
+
+        // list global strings
+        printf("Global strings:\n");
+        GlobalStringManager& gsm = GlobalStringManager::instance();
+        gsm.listStrings();
+        // list transient strings
+        printf("Transient strings:\n");
+        TransientStringManager& tsm = TransientStringManager::instance();
+        tsm.listTransientStrings();
+
         handled = true;
     } else if (input == "*QUIT" || input == "*quit") {
         exit(0);

@@ -1,6 +1,6 @@
-#include <iostream>
 #include "JitContext.h"
 #include "ForthDictionary.h"
+#include "JitGenerator.h"
 #include "JitGenerator.h"
 #include "quit.h"
 
@@ -195,7 +195,13 @@ void add_words()
     d.addWord("words", nullptr, JitGenerator::words, nullptr, nullptr);
     d.addWord("see", nullptr, nullptr, nullptr, JitGenerator::see);
 
-    d.addWord(".\"", nullptr, nullptr, nullptr, JitGenerator::doDotQuote);
+
+    d.addWord(".\"", nullptr, nullptr, JitGenerator::genImmediateDotQuote, JitGenerator::doDotQuote);
+    d.addWord("s\"", nullptr, nullptr, JitGenerator::genImmediateSQuote, JitGenerator::doSQuote);
+    d.addWord("s.", JitGenerator::genPrint, JitGenerator::build_forth(JitGenerator::genPrint), nullptr, JitGenerator::genPrint);
+
+
+
 
 
 }
