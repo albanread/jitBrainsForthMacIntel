@@ -1,5 +1,9 @@
 # jitBrainsForth
 
+
+Deprecated this version as the C++ side was not stable, it is not fun when the slightest code change breaks your application.
+
+
 Forth Jit (MacOSX Intel variant) written in cooperation with the JetBrains AI.
 This is the Mac OSX Intel Variant
 
